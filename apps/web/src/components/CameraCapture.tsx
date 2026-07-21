@@ -211,6 +211,8 @@ export function CameraCapture({
             <video
               ref={videoRef}
               playsInline
+              webkit-playsinline="true"
+              autoPlay
               muted
               className="absolute inset-0 h-full w-full object-cover"
             />
