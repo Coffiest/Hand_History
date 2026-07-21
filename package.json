@@ -12,6 +12,9 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r --filter=./packages/* test"
   },
+  "dependencies": {
+    "next": "^14.2.18"
+  },
   "devDependencies": {
     "typescript": "^5.6.3"
   }
