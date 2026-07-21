@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { handToPlainText } from "@/lib/handHistoryText";
 import { createShareToken } from "@/lib/apiClient";
+import { PhotoIcon, ShareIcon, TextIcon } from "@/components/icons";
 import type { StoredHand } from "@/lib/handTypes";
 
 // Share actions: copy plain text, share/copy a public replay link, or download
@@ -47,14 +48,14 @@ export function ShareBar({ hand }: { hand: StoredHand }) {
   return (
     <div className="relative">
       <div className="grid grid-cols-3 gap-2">
-        <button onClick={copyText} className="rounded-2xl bg-surface ring-1 ring-border py-3 text-sm font-medium text-ink active:scale-95 transition-transform">
-          📝 文字
+        <button onClick={copyText} className="flex flex-col items-center gap-1.5 rounded-2xl bg-surface ring-1 ring-border py-3 text-sm font-medium text-ink active:scale-95 transition-transform">
+          <TextIcon size={20} /> 文字
         </button>
-        <button onClick={shareImage} className="rounded-2xl bg-surface ring-1 ring-border py-3 text-sm font-medium text-ink active:scale-95 transition-transform">
-          🖼️ 画像
+        <button onClick={shareImage} className="flex flex-col items-center gap-1.5 rounded-2xl bg-surface ring-1 ring-border py-3 text-sm font-medium text-ink active:scale-95 transition-transform">
+          <PhotoIcon size={20} /> 画像
         </button>
-        <button onClick={shareLink} className="rounded-2xl bg-gold text-black py-3 text-sm font-semibold active:scale-95 transition-transform">
-          🔗 共有
+        <button onClick={shareLink} className="flex flex-col items-center gap-1.5 rounded-2xl bg-gold text-black py-3 text-sm font-semibold active:scale-95 transition-transform">
+          <ShareIcon size={20} /> 共有
         </button>
       </div>
       {toast && (

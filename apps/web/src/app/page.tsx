@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/useAuth";
 import { LoginScreen } from "@/components/LoginScreen";
 import { fetchHands } from "@/lib/apiClient";
 import { PlayingCard } from "@/components/PlayingCard";
+import { CardsIcon, PlusIcon, SettingsIcon } from "@/components/icons";
 import { cardDisplay } from "@/lib/cards";
 import type { StoredHand } from "@/lib/handTypes";
 
@@ -44,7 +45,7 @@ function HandRow({ hand }: { hand: StoredHand }) {
           </div>
         </div>
         {result != null && (
-          <div className={`text-sm font-bold ${result >= 0 ? "text-suit-club" : "text-suit-heart"}`}>
+          <div className={`text-sm font-bold tabular-nums ${result >= 0 ? "text-suit-club" : "text-suit-heart"}`}>
             {result >= 0 ? "+" : ""}
             {result}
           </div>
@@ -86,8 +87,12 @@ export default function HomePage() {
             <p className="text-xs text-gray3">ポーカーのハンド記録</p>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/settings" className="h-9 w-9 rounded-full bg-surface ring-1 ring-border flex items-center justify-center text-gray2">
-              ⚙︎
+            <Link
+              href="/settings"
+              aria-label="設定"
+              className="h-11 w-11 rounded-full bg-surface ring-1 ring-border flex items-center justify-center text-gray2 active:scale-95 transition-transform"
+            >
+              <SettingsIcon size={20} />
             </Link>
           </div>
         </div>
@@ -100,7 +105,9 @@ export default function HomePage() {
 
         {hands && hands.length === 0 && (
           <div className="text-center py-20 px-6">
-            <div className="text-5xl mb-4">🂠</div>
+            <div className="mx-auto mb-5 h-16 w-16 rounded-2xl bg-surface ring-1 ring-border flex items-center justify-center text-gray3">
+              <CardsIcon size={30} />
+            </div>
             <h2 className="text-lg font-semibold text-ink mb-1">まだハンドがありません</h2>
             <p className="text-sm text-gray2 mb-6">下のボタンから、カメラでカードを撮って最初のハンドを記録しましょう。</p>
           </div>
@@ -120,9 +127,9 @@ export default function HomePage() {
         <div className="max-w-lg mx-auto px-5">
           <Link
             href="/hands/new"
-            className="flex items-center justify-center gap-2 w-full rounded-2xl bg-gold text-black font-semibold py-4 shadow-lift active:scale-[0.98] transition-transform"
+            className="flex items-center justify-center gap-2 w-full rounded-2xl bg-gold text-black font-semibold py-4 shadow-lift active:scale-[0.98] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-dark focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
           >
-            <span className="text-lg">＋</span> 新しいハンドを記録
+            <PlusIcon size={20} /> 新しいハンドを記録
           </Link>
         </div>
       </div>

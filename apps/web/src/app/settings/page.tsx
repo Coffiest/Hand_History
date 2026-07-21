@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
+import { ChevronLeftIcon } from "@/components/icons";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -11,8 +12,8 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-bg">
       <header className="sticky top-0 z-10 bg-bg/80 backdrop-blur-md border-b border-border">
         <div className="max-w-lg mx-auto px-5 py-4 flex items-center justify-between">
-          <button onClick={() => router.back()} className="text-sm text-gray2">
-            ← 戻る
+          <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-gray2 active:scale-95 transition-transform">
+            <ChevronLeftIcon size={18} /> 戻る
           </button>
           <h1 className="text-base font-semibold text-ink">設定</h1>
           <div className="w-10" />

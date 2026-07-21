@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CloseIcon } from "@/components/icons";
 import { ACTION_LABEL, type ActionKind, type RecordedAction, type Street } from "@/lib/handTypes";
 
 // Compact, optional per-street action log editor. Hero-centric but the actor
@@ -51,8 +52,8 @@ export function ActionEntryForm({
                 <span className="text-gray2">{a.actorLabel}</span> · {ACTION_LABEL[a.kind]}
                 {a.toAmount != null ? ` ${a.toAmount}` : ""}
               </span>
-              <button onClick={() => remove(i)} className="text-gray3 text-xs px-2">
-                ✕
+              <button onClick={() => remove(i)} aria-label="削除" className="text-gray3 px-2 flex items-center justify-center">
+                <CloseIcon size={16} />
               </button>
             </div>
           ))}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { CameraCapture } from "./CameraCapture";
 import { CardConfirmSheet, type ConfirmCard } from "./CardConfirmSheet";
+import { AlertIcon } from "@/components/icons";
 import { recognizeCards, RecognitionError, type RecognizedCard } from "@/lib/recognitionApi";
 
 type Phase =
@@ -70,7 +71,9 @@ export function CaptureFlow({
   if (phase.s === "error") {
     return (
       <div className="fixed inset-0 z-50 bg-bg flex flex-col items-center justify-center gap-6 p-8 text-center">
-        <div className="text-4xl">😕</div>
+        <div className="h-16 w-16 rounded-2xl bg-gold/10 text-gold-dark flex items-center justify-center">
+          <AlertIcon size={30} />
+        </div>
         <div className="text-ink font-medium max-w-xs">{phase.message}</div>
         <div className="flex gap-3">
           <button onClick={() => setPhase({ s: "camera" })} className="px-6 py-3 rounded-2xl bg-surface ring-1 ring-border text-gray2 font-medium">

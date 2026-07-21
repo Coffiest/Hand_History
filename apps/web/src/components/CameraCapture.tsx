@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { PhotoIcon } from "@/components/icons";
 
 // Live camera with a futuristic real-time detection overlay: while framing, the
 // component polls the fast /api/detect endpoint with downscaled frames and draws
@@ -284,7 +285,9 @@ export function CameraCapture({
       {!cameraError && (
         <div className="pb-safe pt-4 bg-black flex items-center justify-center gap-10">
           <label className="text-white/70 text-xs flex flex-col items-center gap-1 cursor-pointer">
-            <span className="h-11 w-11 rounded-full bg-white/10 flex items-center justify-center">🖼️</span>
+            <span className="h-11 w-11 rounded-full bg-white/10 flex items-center justify-center text-white">
+              <PhotoIcon size={22} />
+            </span>
             写真
             <input type="file" accept="image/*" onChange={onFilePick} className="hidden" />
           </label>

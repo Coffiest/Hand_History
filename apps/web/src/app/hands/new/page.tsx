@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CaptureFlow } from "@/components/CaptureFlow";
 import { ActionEntryForm } from "@/components/ActionEntryForm";
 import { PlayingCard } from "@/components/PlayingCard";
+import { CameraIcon, ChevronDownIcon, ChevronLeftIcon } from "@/components/icons";
 import type { ConfirmCard } from "@/components/CardConfirmSheet";
 import { createHand } from "@/lib/apiClient";
 import {
@@ -136,8 +137,8 @@ export default function NewHandPage() {
     <div className="min-h-screen bg-bg">
       <header className="sticky top-0 z-10 bg-bg/80 backdrop-blur-md border-b border-border">
         <div className="max-w-lg mx-auto px-5 py-4 flex items-center justify-between">
-          <button onClick={() => router.back()} className="text-sm text-gray2">
-            ← 戻る
+          <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-gray2 active:scale-95 transition-transform">
+            <ChevronLeftIcon size={18} /> 戻る
           </button>
           <h1 className="text-base font-semibold text-ink">新しいハンド</h1>
           <button
@@ -169,9 +170,10 @@ export default function NewHandPage() {
             </div>
             <button
               onClick={() => setCapture({ kind: "hole" })}
-              className="ml-auto rounded-2xl bg-gold text-black text-sm font-semibold px-4 py-2.5 active:scale-95 transition-transform"
+              className="ml-auto flex items-center gap-1.5 rounded-2xl bg-gold text-black text-sm font-semibold px-4 py-2.5 active:scale-95 transition-transform"
             >
-              {holeCards.length ? "撮り直す" : "📷 撮影"}
+              <CameraIcon size={18} />
+              {holeCards.length ? "撮り直す" : "撮影"}
             </button>
           </div>
         </section>
@@ -189,9 +191,10 @@ export default function NewHandPage() {
             </div>
             <button
               onClick={() => setCapture({ kind: "board" })}
-              className="mt-3 w-full rounded-2xl bg-surface ring-1 ring-border text-ink text-sm font-semibold py-2.5 active:scale-[0.98] transition-transform"
+              className="mt-3 w-full flex items-center justify-center gap-1.5 rounded-2xl bg-surface ring-1 ring-border text-ink text-sm font-semibold py-2.5 active:scale-[0.98] transition-transform"
             >
-              {boardCards.length ? "撮り直す" : "📷 ボードを撮影"}
+              <CameraIcon size={18} />
+              {boardCards.length ? "撮り直す" : "ボードを撮影"}
             </button>
           </div>
         </section>
@@ -268,8 +271,12 @@ export default function NewHandPage() {
                         </span>
                       )}
                     </span>
-                    <span className="text-xs text-gray3">
-                      {count > 0 ? `${count}件` : ""} {open ? "▲" : "▼"}
+                    <span className="flex items-center gap-2 text-xs text-gray3">
+                      {count > 0 ? `${count}件` : ""}
+                      <ChevronDownIcon
+                        size={18}
+                        className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+                      />
                     </span>
                   </button>
                   <AnimatePresence>

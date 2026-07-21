@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HandReplay } from "@/components/HandReplay";
 import { ShareBar } from "@/components/ShareBar";
+import { ChevronLeftIcon } from "@/components/icons";
 import { fetchHand, deleteHand } from "@/lib/apiClient";
 import type { StoredHand } from "@/lib/handTypes";
 
@@ -44,8 +45,8 @@ export default function HandDetailPage({ params }: { params: { id: string } }) {
     <div className="min-h-screen bg-bg">
       <header className="sticky top-0 z-10 bg-bg/80 backdrop-blur-md border-b border-border">
         <div className="max-w-lg mx-auto px-5 py-4 flex items-center justify-between">
-          <button onClick={() => router.back()} className="text-sm text-gray2">
-            ← 戻る
+          <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-gray2 active:scale-95 transition-transform">
+            <ChevronLeftIcon size={18} /> 戻る
           </button>
           <h1 className="text-base font-semibold text-ink">ハンド詳細</h1>
           <button onClick={remove} className="text-sm text-suit-heart">

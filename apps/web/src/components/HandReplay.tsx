@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlayingCard } from "./PlayingCard";
-import { cardDisplay } from "@/lib/cards";
+import { PlayIcon } from "@/components/icons";
 import { madeHandName } from "@/lib/handEval";
 import {
   ACTION_LABEL,
@@ -111,9 +111,10 @@ export function HandReplay({ hand }: { hand: StoredHand }) {
           <button
             onClick={play}
             disabled={playing}
-            className="rounded-full bg-ink text-white text-sm font-semibold px-6 py-2.5 active:scale-95 transition-transform disabled:opacity-50"
+            className="flex items-center gap-2 rounded-full bg-ink text-white text-sm font-semibold px-6 py-2.5 active:scale-95 transition-transform disabled:opacity-50"
           >
-            {playing ? "再生中…" : "▶ リプレイ"}
+            <PlayIcon size={16} />
+            {playing ? "再生中…" : "リプレイ"}
           </button>
         </div>
       )}
@@ -161,13 +162,13 @@ export function HandReplay({ hand }: { hand: StoredHand }) {
           {hand.potTotal != null && (
             <div>
               <div className="text-xs text-gray3">ポット</div>
-              <div className="text-lg font-bold text-ink">{hand.potTotal}</div>
+              <div className="text-lg font-bold text-ink tabular-nums">{hand.potTotal}</div>
             </div>
           )}
           {hand.resultAmount != null && (
             <div>
               <div className="text-xs text-gray3">収支</div>
-              <div className={`text-lg font-bold ${hand.resultAmount >= 0 ? "text-suit-club" : "text-suit-heart"}`}>
+              <div className={`text-lg font-bold tabular-nums ${hand.resultAmount >= 0 ? "text-suit-club" : "text-suit-heart"}`}>
                 {hand.resultAmount >= 0 ? "+" : ""}
                 {hand.resultAmount}
               </div>
