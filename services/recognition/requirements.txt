@@ -1,0 +1,16 @@
+# Correctness-critical pins (verified against the trained models):
+#  - scikit-learn MUST be 1.6.1: the rank joblib bundle was pickled with 1.6.1;
+#    loading it under a different version warns "may lead to invalid results".
+#  - OpenCV MUST be 4.x: cv2.HOGDescriptor was removed in OpenCV 5.x, and the
+#    rank pipeline depends on it.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pillow>=11,<12
+numpy>=2,<3
+opencv-python-headless>=4.8,<5
+scikit-learn==1.6.1
+joblib>=1.4
+# CPU-only torch. In the Docker build, install from the CPU wheel index:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.2,<3

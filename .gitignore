@@ -1,0 +1,13 @@
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Claude Code local (session-specific) settings
+.claude/settings.local.json
