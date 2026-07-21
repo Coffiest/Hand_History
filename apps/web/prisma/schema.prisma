@@ -44,6 +44,8 @@ model Hand {
 
   /// Opaque token for the public share/replay page. Null until the user shares.
   shareToken   String?  @unique
+  /// User-starred hand (favorites filter).
+  favorite     Boolean  @default(false)
 
   cards   HandCard[]
   actions HandAction[]

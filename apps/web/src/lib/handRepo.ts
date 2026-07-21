@@ -43,6 +43,7 @@ function serialize(hand: NonNullable<PrismaHandWithRelations>): StoredHand {
     id: hand.id,
     createdAt: hand.createdAt.toISOString(),
     shareToken: hand.shareToken,
+    favorite: hand.favorite,
     title: hand.title,
     heroPosition: hand.heroPosition,
     numPlayers: hand.numPlayers,

@@ -43,6 +43,15 @@ export async function deleteHand(id: string): Promise<void> {
   if (!res.ok) throw new Error(`削除に失敗しました (${res.status})`);
 }
 
+export async function toggleFavorite(id: string, favorite: boolean): Promise<void> {
+  const res = await fetch(`/api/hands/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ favorite }),
+  });
+  if (!res.ok) throw new Error(`更新に失敗しました (${res.status})`);
+}
+
 export async function createShareToken(id: string): Promise<string> {
   const res = await fetch(`/api/hands/${id}/share`, { method: "POST", headers: await authHeaders() });
   if (!res.ok) throw new Error(`共有リンクの作成に失敗しました (${res.status})`);

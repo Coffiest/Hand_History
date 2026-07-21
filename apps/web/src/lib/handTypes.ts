@@ -68,4 +68,5 @@ export interface StoredHand extends HandPayload {
   id: string;
   createdAt: string;
   shareToken: string | null;
+  favorite: boolean;
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getHandByShareToken } from "@/lib/handRepo";
 import { HandReplay } from "@/components/HandReplay";
+import { VersionTag } from "@/components/AppShell";
 import { cardDisplay } from "@/lib/cards";
 
 export const runtime = "nodejs";
@@ -56,6 +57,8 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
         >
           自分もハンドを記録する
         </Link>
+
+        <VersionTag />
       </main>
     </div>
   );

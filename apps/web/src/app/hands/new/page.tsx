@@ -7,8 +7,9 @@ import { CaptureFlow } from "@/components/CaptureFlow";
 import { ActionEntryForm } from "@/components/ActionEntryForm";
 import { PlayingCard } from "@/components/PlayingCard";
 import { CameraIcon, ChevronDownIcon, ChevronLeftIcon } from "@/components/icons";
+import { VersionTag } from "@/components/AppShell";
 import type { ConfirmCard } from "@/components/CardConfirmSheet";
-import { createHand } from "@/lib/apiClient";
+import { saveHand } from "@/lib/handStore";
 import {
   STREETS,
   STREET_LABEL_JA,
@@ -99,7 +100,7 @@ export default function NewHandPage() {
       actions: STREETS.flatMap((s) => actionsByStreet[s]).map((a, i) => ({ ...a, sequenceNumber: i })),
     };
     try {
-      const hand = await createHand(payload);
+      const hand = await saveHand(payload);
       router.replace(`/hands/${hand.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存に失敗しました");
@@ -338,6 +339,8 @@ export default function NewHandPage() {
         >
           {saving ? "保存中…" : "ハンドを保存"}
         </button>
+
+        <VersionTag className="pt-2" />
       </main>
     </div>
   );

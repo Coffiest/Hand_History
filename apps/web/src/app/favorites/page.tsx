@@ -4,7 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { HandListView } from "@/components/HandListView";
 import { useRequireLogin } from "@/lib/mockAuth";
 
-export default function HomePage() {
+export default function FavoritesPage() {
   const ready = useRequireLogin();
 
   if (!ready) {
@@ -14,10 +14,10 @@ export default function HomePage() {
   return (
     <AppShell>
       <div className="flex items-baseline justify-between mb-3 px-1">
-        <h1 className="text-[22px] font-bold text-ink tracking-tight">ヒストリー</h1>
-        <span className="text-xs text-gray3">これまでの記録</span>
+        <h1 className="text-[22px] font-bold text-ink tracking-tight">お気に入り</h1>
+        <span className="text-xs text-gray3">星を付けたハンド</span>
       </div>
-      <HandListView favoritesOnly={false} />
+      <HandListView favoritesOnly />
     </AppShell>
   );
 }
