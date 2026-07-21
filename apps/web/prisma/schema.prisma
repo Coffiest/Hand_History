@@ -1,0 +1,91 @@
+// Hand History — recorded live poker hands captured by camera card recognition.
+// Postgres, hosted on Supabase in production (DATABASE_URL swaps for local dev).
+// Field names/vocabulary deliberately track Meta-GEO's GEO strategy DB
+// (street/kind/toAmount) so recorded hands can later be imported for analysis.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  /// Supabase Auth user id (auth.users.id).
+  authId      String   @unique
+  email       String?  @unique
+  displayName String?
+  createdAt   DateTime @default(now())
+
+  hands Hand[]
+}
+
+model Hand {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String?
+  createdAt    DateTime @default(now())
+
+  /// Hero's position label (BTN/SB/BB/UTG/HJ/CO...). Optional — history entry is
+  /// valid with cards only.
+  heroPosition String?
+  numPlayers   Int?
+  smallBlind   Int?
+  bigBlind     Int?
+  /// Final pot size and hero's net result, if the user chose to record them.
+  potTotal     Int?
+  resultAmount Int?
+  wonByFold    Boolean?
+  notes        String?
+
+  /// Opaque token for the public share/replay page. Null until the user shares.
+  shareToken   String?  @unique
+
+  cards   HandCard[]
+  actions HandAction[]
+
+  @@index([userId, createdAt])
+}
+
+model HandCard {
+  id             String  @id @default(uuid())
+  handId         String
+  hand           Hand    @relation(fields: [handId], references: [id], onDelete: Cascade)
+  /// "hole" | "board"
+  role           String
+  /// For board cards: "flop" | "turn" | "river". Null for hole cards.
+  boardStreet    String?
+  /// Display / deal order within its role.
+  position       Int
+  /// 1-13 (1=A, 11=J, 12=Q, 13=K) — matches the card image asset naming.
+  rank           Int
+  /// "s" | "h" | "d" | "c"
+  suit           String
+  rankConfidence Float?
+  suitConfidence Float?
+  /// "recognized" | "manualOverride"
+  source         String  @default("recognized")
+
+  @@index([handId])
+}
+
+model HandAction {
+  id             String @id @default(uuid())
+  handId         String
+  hand           Hand   @relation(fields: [handId], references: [id], onDelete: Cascade)
+  sequenceNumber Int
+  /// "preflop" | "flop" | "turn" | "river" (same vocabulary as Meta-GEO)
+  street         String
+  /// "fold" | "check" | "call" | "bet" | "raise" | "allIn" | "postSB" | "postBB"
+  kind           String
+  /// For bet/raise/allIn: the total amount this action brings the street to.
+  toAmount       Int?
+  /// Free-form actor label ("Hero", "CO", "Villain 1"...). Hero-centric in v1.
+  actorLabel     String @default("Hero")
+
+  @@index([handId, sequenceNumber])
+}

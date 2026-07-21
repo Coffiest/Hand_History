@@ -1,0 +1,20 @@
+# Fly.io config for the card-recognition microservice.
+# The recognition process holds torch + sklearn models in memory and uses a
+# process pool, so it needs a persistent (non-serverless) machine with enough RAM.
+app = "handhistory-recognition"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 2048
