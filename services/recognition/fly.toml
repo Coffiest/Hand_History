@@ -12,9 +12,20 @@ primary_region = "nrt"
   force_https = true
   auto_stop_machines = "suspend"
   auto_start_machines = true
+  # Set to 1 to keep one machine always warm (avoids ~15s torch cold-start on the
+  # first request after idle). 0 is cheaper; suspend/resume is faster than a cold start.
   min_machines_running = 0
+
+  # Wait for the app to actually answer before routing traffic to a new deploy.
+  [[http_service.checks]]
+    method = "GET"
+    path = "/v1/health"
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "30s"
 
 [[vm]]
   cpu_kind = "shared"
   cpus = 2
+  # Recognition holds torch + sklearn models in memory; 2GB is the safe floor.
   memory_mb = 2048
