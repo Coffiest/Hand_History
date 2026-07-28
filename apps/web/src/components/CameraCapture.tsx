@@ -48,7 +48,10 @@ export function CameraCapture({
       }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          // Ask for the highest the device will give us: with 5 board cards in
+          // frame, each card only gets a fraction of the sensor width, and the
+          // rank glyph needs enough pixels to survive binarisation.
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 2160 } },
           audio: false,
         });
         if (cancelled) {
