@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -30,11 +30,19 @@ class CardOut(BaseModel):
     rank_confidence: float | None
     suit_confidence: float
     accepted: bool
+    # Present only when the request asked for debug: the intermediate images
+    # (card crop, rectified card, the black-and-white digit patches the
+    # classifier actually saw) and the scores behind the read.
+    debug: dict[str, Any] | None = None
 
 
 class RecognizeResponse(BaseModel):
     count: int
     cards: list[CardOut]
+    # Present only when debug was requested: what the splitter did with the
+    # frame (source, detection overlay, edge mask) — the same pictures
+    # card_splitter_first.py writes to disk when run as a script.
+    splitter: dict[str, Any] | None = None
 
 
 class DetectedBox(BaseModel):
@@ -94,7 +102,18 @@ def health() -> dict[str, Any]:
 
 
 @app.post("/v1/recognize", response_model=RecognizeResponse)
-async def recognize(image: UploadFile = File(...)) -> RecognizeResponse:
+async def recognize(
+    image: UploadFile = File(...),
+    expected_count: int | None = Form(default=None),
+    debug: bool = Form(default=False),
+) -> RecognizeResponse:
+    """Recognise every card in one photo.
+
+    ``expected_count`` keeps only that many candidates (the research script's
+    behaviour); without it, anything card-shaped in frame can be picked up.
+    ``debug`` additionally returns the intermediate images and scores behind
+    each read — nothing is persisted, it is all inline in the response.
+    """
     if image.content_type is not None and not image.content_type.startswith("image/"):
         raise HTTPException(status_code=415, detail="Uploaded file is not an image")
 
@@ -104,12 +123,19 @@ async def recognize(image: UploadFile = File(...)) -> RecognizeResponse:
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Image too large")
 
+    if expected_count is not None and not (1 <= expected_count <= 10):
+        raise HTTPException(status_code=422, detail="expected_count must be between 1 and 10")
+
     try:
-        cards = recognize_image(data)
+        cards, splitter_debug = recognize_image(data, expected_count=expected_count, debug=debug)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    return RecognizeResponse(count=len(cards), cards=[CardOut(**c) for c in cards])
+    return RecognizeResponse(
+        count=len(cards),
+        cards=[CardOut(**c) for c in cards],
+        splitter=splitter_debug,
+    )
 
 
 @app.post("/v1/detect", response_model=DetectResponse)

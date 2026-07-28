@@ -47,10 +47,13 @@ export function CardConfirmSheet({
   recognized,
   onConfirm,
   onRetake,
+  onShowDebug,
 }: {
   recognized: RecognizedCard[];
   onConfirm: (cards: ConfirmCard[], role: CardRole) => void;
   onRetake: () => void;
+  /** Opens the stage-by-stage view of how this read was produced. */
+  onShowDebug?: () => void;
 }) {
   const [cards, setCards] = useState<ConfirmCard[]>(recognized.map(fromRecognized));
   const [role, setRole] = useState<CardRole>(roleForCount(recognized.length));
@@ -141,6 +144,15 @@ export function CardConfirmSheet({
           ))}
         </div>
       </div>
+
+      {onShowDebug && (
+        <button
+          onClick={onShowDebug}
+          className="shrink-0 mx-5 mb-1 text-[11px] text-gray2 underline underline-offset-4 py-1.5"
+        >
+          認識の詳細を見る（切り抜き・数字画像）
+        </button>
+      )}
 
       <div className="p-5 pb-safe flex gap-3 shrink-0 border-t border-border">
         <button

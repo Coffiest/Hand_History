@@ -2936,9 +2936,19 @@ def extract_multiscan_rank_pairs_from_split_card(image):
         and candidates
         and float(candidates[0].get("score", 0.0)) <= 0.0
     ):
+        source_rgb = np.array(image.convert("RGB"))
         fallback_candidates = extract_multiscan_rank_pairs(image)
         for candidate in fallback_candidates:
             candidate["input_mode"] = "redetect_fallback"
+            # Keep the same debug artefact the direct path produces, so the app
+            # can always show which card image the rank scan actually read.
+            try:
+                warped = warp_card_to_front(source_rgb, candidate["quad"])
+                candidate["rectified_image"] = rotate_card_to_portrait(
+                    warped, int(candidate.get("rotation", 0))
+                )
+            except Exception:
+                pass
         return fallback_candidates
 
     return candidates
