@@ -1,34 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { CameraCapture } from "./CameraCapture";
-import { CardConfirmSheet, type ConfirmCard } from "./CardConfirmSheet";
+import { CardConfirmSheet, type CardRole, type ConfirmCard } from "./CardConfirmSheet";
 import { AlertIcon } from "@/components/icons";
 import { recognizeCards, RecognitionError, type RecognizedCard } from "@/lib/recognitionApi";
 
+// A continuous scanning session. The camera is mounted for the whole session —
+// recognising and confirming are layered on top of it — so accepting a result
+// returns to a live viewfinder instantly instead of re-acquiring the stream.
+//
+// Cards are routed by count: 2 is a hand, 3-5 is a board. The sheet lets the
+// user override that, and the board is always replaced wholesale, which is what
+// re-shooting the whole board on the turn and river naturally produces.
+
 type Phase =
-  | { s: "camera" }
+  | { s: "scanning" }
   | { s: "recognizing" }
   | { s: "confirm"; cards: RecognizedCard[] }
   | { s: "error"; message: string; blob: Blob };
 
-// End-to-end capture: camera → (multi-second) recognition with a loading state →
-// confirm/fix → returns the final cards. Used for both hole cards and the board.
+export type CaptureResult = { hole: ConfirmCard[]; board: ConfirmCard[] };
+
 export function CaptureFlow({
-  title,
-  hint,
-  expectedCount,
+  initialHole = [],
+  initialBoard = [],
   onDone,
   onCancel,
 }: {
-  title: string;
-  hint: string;
-  expectedCount?: number;
-  onDone: (cards: ConfirmCard[]) => void;
+  initialHole?: ConfirmCard[];
+  initialBoard?: ConfirmCard[];
+  onDone: (result: CaptureResult) => void;
   onCancel: () => void;
 }) {
-  const [phase, setPhase] = useState<Phase>({ s: "camera" });
+  const [phase, setPhase] = useState<Phase>({ s: "scanning" });
+  const [hole, setHole] = useState<ConfirmCard[]>(initialHole);
+  const [board, setBoard] = useState<ConfirmCard[]>(initialBoard);
 
   async function recognize(blob: Blob) {
     setPhase({ s: "recognizing" });
@@ -41,61 +49,84 @@ export function CaptureFlow({
     }
   }
 
-  if (phase.s === "camera") {
-    return (
-      <CameraCapture
-        title={title}
-        hint={hint}
-        onCapture={(blob) => recognize(blob)}
-        onCancel={onCancel}
-      />
-    );
+  function accept(cards: ConfirmCard[], role: CardRole) {
+    if (role === "hole") setHole(cards);
+    else setBoard(cards);
+    setPhase({ s: "scanning" });
   }
 
-  if (phase.s === "recognizing") {
-    return (
-      <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center gap-6 text-white">
-        <motion.div
-          className="h-16 w-16 rounded-full border-4 border-white/20 border-t-gold"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-        />
-        <div className="text-center">
-          <div className="text-base font-semibold">カードを認識しています…</div>
-          <div className="text-sm text-white/60 mt-1">数秒かかることがあります</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase.s === "error") {
-    return (
-      <div className="fixed inset-0 z-50 bg-bg flex flex-col items-center justify-center gap-6 p-8 text-center">
-        <div className="h-16 w-16 rounded-2xl bg-gold/10 text-gold-dark flex items-center justify-center">
-          <AlertIcon size={30} />
-        </div>
-        <div className="text-ink font-medium max-w-xs">{phase.message}</div>
-        <div className="flex gap-3">
-          <button onClick={() => setPhase({ s: "camera" })} className="px-6 py-3 rounded-2xl bg-surface ring-1 ring-border text-gray2 font-medium">
-            撮り直す
-          </button>
-          <button onClick={() => recognize(phase.blob)} className="px-6 py-3 rounded-2xl bg-gold text-black font-semibold">
-            再試行
-          </button>
-        </div>
-        <button onClick={onCancel} className="text-gray3 text-sm">
-          キャンセル
-        </button>
-      </div>
-    );
-  }
+  const statusParts: string[] = [];
+  if (hole.length) statusParts.push(`ホール${hole.length}枚`);
+  if (board.length) statusParts.push(`ボード${board.length}枚`);
+  const statusText = statusParts.length ? statusParts.join(" · ") : "カードをかざすと自動で記録します";
 
   return (
-    <CardConfirmSheet
-      recognized={phase.cards}
-      expectedCount={expectedCount}
-      onConfirm={onDone}
-      onRetake={() => setPhase({ s: "camera" })}
-    />
+    <>
+      <CameraCapture
+        statusText={statusText}
+        canFinish={hole.length > 0 || board.length > 0}
+        paused={phase.s !== "scanning"}
+        onCapture={recognize}
+        onCancel={onCancel}
+        onFinish={() => onDone({ hole, board })}
+      />
+
+      <AnimatePresence>
+        {phase.s === "recognizing" && (
+          <motion.div
+            key="recognizing"
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/55 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="h-12 w-12 rounded-full border-[3px] border-white/25 border-t-gold animate-spin" />
+            <div className="text-white font-medium">カードを読み取っています…</div>
+            <div className="text-white/60 text-xs">数秒かかります</div>
+          </motion.div>
+        )}
+
+        {phase.s === "confirm" && (
+          <CardConfirmSheet
+            key="confirm"
+            recognized={phase.cards}
+            onConfirm={accept}
+            onRetake={() => setPhase({ s: "scanning" })}
+          />
+        )}
+
+        {phase.s === "error" && (
+          <motion.div
+            key="error"
+            className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl bg-bg shadow-lift p-6 pb-safe"
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", stiffness: 360, damping: 34 }}
+          >
+            <div className="flex flex-col items-center gap-4 text-center pb-4">
+              <div className="h-14 w-14 rounded-2xl bg-gold/10 text-gold-dark flex items-center justify-center">
+                <AlertIcon size={26} />
+              </div>
+              <div className="text-ink font-medium max-w-xs">{phase.message}</div>
+              <div className="flex gap-3 w-full pt-1">
+                <button
+                  onClick={() => setPhase({ s: "scanning" })}
+                  className="flex-1 py-3.5 rounded-2xl bg-surface text-gray2 font-medium ring-1 ring-border"
+                >
+                  撮り直す
+                </button>
+                <button
+                  onClick={() => recognize(phase.blob)}
+                  className="flex-[2] py-3.5 rounded-2xl bg-gold text-black font-semibold"
+                >
+                  再試行
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
