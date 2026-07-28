@@ -1,6 +1,6 @@
 {
   "name": "@handhistory/web",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,7 +10,8 @@
     "lint": "next lint",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "test": "vitest run"
   },
   "dependencies": {
     "@handhistory/engine": "workspace:*",
@@ -29,6 +30,7 @@
     "postcss": "^8.4.49",
     "prisma": "^6.2.1",
     "tailwindcss": "^3.4.15",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
   }
 }

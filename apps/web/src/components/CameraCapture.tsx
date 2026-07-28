@@ -2,48 +2,90 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PhotoIcon } from "@/components/icons";
+import { CameraIcon, CloseIcon } from "@/components/icons";
+import {
+  DEFAULT_SCAN_CONFIG,
+  evaluateScan,
+  pruneHistory,
+  shouldRearm,
+  type DetectFrame,
+  type ScanState,
+} from "@/lib/scanStability";
 
-// Live camera with a futuristic real-time detection overlay: while framing, the
-// component polls the fast /api/detect endpoint with downscaled frames and draws
-// an animated bracket + scan-sweep over every card the backend currently sees.
-// A manual shutter captures a full-resolution JPEG and hands it back via onCapture.
+// Auto-scanning camera, in the spirit of a QR reader: point it at the cards and
+// it fires by itself. It polls the fast /api/detect endpoint, tracks where the
+// cards are frame to frame, and captures a full-resolution JPEG the moment a
+// valid set of cards has held still (see lib/scanStability.ts for the rules).
 //
-// Falls back to a file picker when getUserMedia is unavailable (desktop / CI),
-// so the whole flow is still testable without a real camera.
+// There is deliberately no shutter button. If detection cannot get a lock for a
+// while — dim room, patterned felt — a manual capture button fades in as an
+// escape hatch. A file picker also stands in when getUserMedia is unavailable
+// (desktop / CI), so the whole flow stays testable without a real camera.
 
 type DetectedQuad = { index: number; quad: [number, number][] };
 
-const DETECT_INTERVAL_MS = 650;
+const DETECT_INTERVAL_MS = 220; // detect costs ~5ms server-side; this is network-bound
 const DETECT_FRAME_MAX = 640; // downscale long edge for the detect poll
+const HISTORY_WINDOW_MS = 2000;
+const MANUAL_FALLBACK_AFTER_MS = 8000;
+
+function guidance(state: ScanState, cameraReady: boolean): string {
+  if (!cameraReady) return "カメラ起動中…";
+  switch (state.kind) {
+    case "idle":
+      return "カードをかざしてください";
+    case "invalidCount":
+      return state.count < 2
+        ? "カードを2枚、または3〜5枚写してください"
+        : `${state.count}枚は多すぎます`;
+    case "settling":
+      return "そのまま静止…";
+    case "ready":
+      return "読み取り中…";
+  }
+}
 
 export function CameraCapture({
-  title,
-  hint,
+  statusText,
+  canFinish,
+  paused = false,
   onCapture,
   onCancel,
+  onFinish,
 }: {
-  title: string;
-  hint: string;
+  /** Live summary of what has been captured so far, e.g. "ホール2枚 · ボード4枚". */
+  statusText?: string;
+  canFinish?: boolean;
+  /** Stop polling while an overlay (recognising / confirm sheet) is up. */
+  paused?: boolean;
   onCapture: (blob: Blob) => void;
   onCancel: () => void;
+  onFinish?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectBusy = useRef(false);
+  const historyRef = useRef<DetectFrame[]>([]);
+  const armedRef = useRef(true);
+  const capturedCountRef = useRef(0);
+  const lastLockRef = useRef<number>(0);
+  const onCaptureRef = useRef(onCapture);
+  onCaptureRef.current = onCapture;
 
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [quads, setQuads] = useState<DetectedQuad[]>([]);
-  const [capturing, setCapturing] = useState(false);
+  const [scanState, setScanState] = useState<ScanState>({ kind: "idle" });
+  const [showManual, setShowManual] = useState(false);
+  const [flash, setFlash] = useState(false);
 
   // ── Camera lifecycle ──────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     async function start() {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError("このブラウザではカメラを利用できません。");
+        setCameraError("このブラウザではカメラを使えません。写真を選択してください。");
         return;
       }
       try {
@@ -59,13 +101,14 @@ export function CameraCapture({
           return;
         }
         streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          await video.play().catch(() => undefined);
         }
         setCameraReady(true);
       } catch {
-        setCameraError("カメラを起動できませんでした。権限を確認するか、写真を選択してください。");
+        setCameraError("カメラを起動できませんでした。設定で許可するか、写真を選択してください。");
       }
     }
     start();
@@ -92,9 +135,16 @@ export function CameraCapture({
     return canvas;
   }, []);
 
-  // ── Real-time detection polling ───────────────────────────────────────────
+  const captureFullFrame = useCallback(async () => {
+    const canvas = grabFrame(); // full resolution
+    if (!canvas) return;
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.92));
+    if (blob) onCaptureRef.current(blob);
+  }, [grabFrame]);
+
+  // ── Detection polling + auto-fire ─────────────────────────────────────────
   useEffect(() => {
-    if (!cameraReady) return;
+    if (!cameraReady || paused) return;
     let stop = false;
 
     async function tick() {
@@ -113,7 +163,41 @@ export function CameraCapture({
               const res = await fetch("/api/detect", { method: "POST", body: form });
               if (res.ok && !stop) {
                 const data = (await res.json()) as { boxes: DetectedQuad[] };
-                setQuads(data.boxes ?? []);
+                const boxes = data.boxes ?? [];
+                setQuads(boxes);
+
+                const now = performance.now();
+                historyRef.current = pruneHistory(
+                  [...historyRef.current, { t: now, quads: boxes.map((b) => b.quad) }],
+                  now,
+                  HISTORY_WINDOW_MS,
+                );
+
+                // A capture disarms the scanner so a card left in frame is not
+                // shot repeatedly; the scene has to change before it re-arms.
+                if (!armedRef.current && shouldRearm(capturedCountRef.current, boxes.length)) {
+                  armedRef.current = true;
+                }
+
+                const state = evaluateScan(historyRef.current, now, DEFAULT_SCAN_CONFIG);
+                setScanState(state);
+
+                if (state.kind === "ready" && armedRef.current) {
+                  armedRef.current = false;
+                  capturedCountRef.current = state.count;
+                  lastLockRef.current = now;
+                  setShowManual(false);
+                  setFlash(true);
+                  window.setTimeout(() => setFlash(false), 220);
+                  navigator.vibrate?.(30);
+                  await captureFullFrame();
+                } else if (state.kind === "ready" || state.kind === "settling") {
+                  lastLockRef.current = now;
+                  setShowManual(false);
+                } else if (now - lastLockRef.current > MANUAL_FALLBACK_AFTER_MS) {
+                  // Nothing has locked on for a while — offer a way out.
+                  setShowManual(true);
+                }
               }
             }
           }
@@ -123,14 +207,25 @@ export function CameraCapture({
           detectBusy.current = false;
         }
       }
-      if (!stop) setTimeout(tick, DETECT_INTERVAL_MS);
+      if (!stop) window.setTimeout(tick, DETECT_INTERVAL_MS);
     }
-    const t = setTimeout(tick, 400);
+
+    lastLockRef.current = performance.now();
+    const t = window.setTimeout(tick, 300);
     return () => {
       stop = true;
-      clearTimeout(t);
+      window.clearTimeout(t);
     };
-  }, [cameraReady, grabFrame]);
+  }, [cameraReady, paused, grabFrame, captureFullFrame]);
+
+  // Clear stale detections while paused so the overlay does not linger.
+  useEffect(() => {
+    if (paused) {
+      setQuads([]);
+      setScanState({ kind: "idle" });
+      historyRef.current = [];
+    }
+  }, [paused]);
 
   // ── Draw detection overlay ────────────────────────────────────────────────
   useEffect(() => {
@@ -139,35 +234,42 @@ export function CameraCapture({
     if (!canvas || !video) return;
 
     const rect = video.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
 
     // object-cover mapping: the video fills the box, cropping the longer axis.
     const vw = video.videoWidth || 16;
     const vh = video.videoHeight || 9;
-    const scale = Math.max(canvas.width / vw, canvas.height / vh);
+    const scale = Math.max(rect.width / vw, rect.height / vh);
     const dispW = vw * scale;
     const dispH = vh * scale;
-    const offX = (canvas.width - dispW) / 2;
-    const offY = (canvas.height - dispH) / 2;
+    const offX = (rect.width - dispW) / 2;
+    const offY = (rect.height - dispH) / 2;
     const mapX = (nx: number) => offX + nx * dispW;
     const mapY = (ny: number) => offY + ny * dispH;
 
+    // Grey while the count is wrong, gold once we are counting down to a shot.
+    const locked = scanState.kind === "settling" || scanState.kind === "ready";
+    const stroke = locked ? "rgba(242,169,0,0.95)" : "rgba(255,255,255,0.55)";
+
     for (const box of quads) {
       const pts = box.quad.map(([nx, ny]) => [mapX(nx), mapY(ny)] as [number, number]);
-      // Glow frame
       ctx.lineWidth = 3;
-      ctx.strokeStyle = "rgba(242,169,0,0.95)";
-      ctx.shadowColor = "rgba(242,169,0,0.9)";
-      ctx.shadowBlur = 16;
+      ctx.strokeStyle = stroke;
+      ctx.shadowColor = locked ? "rgba(242,169,0,0.9)" : "transparent";
+      ctx.shadowBlur = locked ? 16 : 0;
       ctx.beginPath();
       pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1])));
       ctx.closePath();
       ctx.stroke();
-      // Corner brackets
+
       ctx.shadowBlur = 0;
       ctx.strokeStyle = "rgba(255,255,255,0.95)";
       ctx.lineWidth = 3;
@@ -184,31 +286,18 @@ export function CameraCapture({
         ctx.stroke();
       }
     }
-  }, [quads]);
-
-  // ── Shutter ───────────────────────────────────────────────────────────────
-  const shoot = useCallback(async () => {
-    setCapturing(true);
-    const canvas = grabFrame(); // full resolution
-    if (!canvas) {
-      setCapturing(false);
-      return;
-    }
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.92));
-    setCapturing(false);
-    if (blob) onCapture(blob);
-  }, [grabFrame, onCapture]);
+  }, [quads, scanState]);
 
   const onFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onCapture(file);
   };
 
-  const detecting = quads.length > 0;
+  const progress = scanState.kind === "settling" ? scanState.progress : scanState.kind === "ready" ? 1 : 0;
+  const locked = scanState.kind === "settling" || scanState.kind === "ready";
 
   return (
-    <div className="fixed inset-0 z-50 bg-black text-white flex flex-col">
-      {/* Camera / fallback */}
+    <div className="fixed inset-0 z-40 bg-black text-white flex flex-col">
       <div className="relative flex-1 overflow-hidden">
         {!cameraError ? (
           <>
@@ -222,51 +311,99 @@ export function CameraCapture({
             />
             <canvas ref={overlayRef} className="absolute inset-0 h-full w-full pointer-events-none" />
 
-            {/* Animated scan sweep */}
-            {cameraReady && (
-              <motion.div
-                aria-hidden
-                className="absolute inset-x-0 h-24 pointer-events-none"
-                style={{
-                  background:
-                    "linear-gradient(180deg, rgba(242,169,0,0) 0%, rgba(242,169,0,0.18) 50%, rgba(242,169,0,0) 100%)",
-                }}
-                initial={{ top: "0%" }}
-                animate={{ top: ["0%", "88%", "0%"] }}
-                transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
-              />
-            )}
+            {/* Capture flash */}
+            <AnimatePresence>
+              {flash && (
+                <motion.div
+                  aria-hidden
+                  className="absolute inset-0 bg-gold pointer-events-none"
+                  initial={{ opacity: 0.45 }}
+                  animate={{ opacity: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.22 }}
+                />
+              )}
+            </AnimatePresence>
 
             {/* Top bar */}
-            <div className="absolute top-0 inset-x-0 p-4 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent">
-              <button onClick={onCancel} className="text-sm font-medium text-white/90 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur">
-                キャンセル
+            <div className="absolute top-0 inset-x-0 p-4 flex items-start justify-between gap-3 bg-gradient-to-b from-black/65 to-transparent">
+              <button
+                onClick={onCancel}
+                aria-label="閉じる"
+                className="h-10 w-10 rounded-full bg-white/10 backdrop-blur flex items-center justify-center active:scale-95 transition-transform"
+              >
+                <CloseIcon size={20} />
               </button>
-              <div className="text-center">
-                <div className="text-sm font-semibold">{title}</div>
-                <div className="text-[11px] text-white/70">{hint}</div>
-              </div>
-              <div className="w-[72px]" />
+
+              {statusText && (
+                <div className="flex-1 text-center pt-1.5">
+                  <div className="text-[11px] text-white/75 tabular-nums">{statusText}</div>
+                </div>
+              )}
+
+              {onFinish ? (
+                <button
+                  onClick={onFinish}
+                  disabled={!canFinish}
+                  className="rounded-full bg-gold text-black text-sm font-semibold px-4 py-2 active:scale-95 transition-transform disabled:opacity-40"
+                >
+                  完了
+                </button>
+              ) : (
+                <div className="w-10" />
+              )}
             </div>
 
-            {/* Detection status pill */}
-            <div className="absolute top-20 inset-x-0 flex justify-center pointer-events-none">
-              <AnimatePresence>
+            {/* Guidance + settle ring */}
+            <div className="absolute bottom-0 inset-x-0 pb-safe pb-10 flex flex-col items-center gap-4 bg-gradient-to-t from-black/65 to-transparent pt-16 pointer-events-none">
+              <div className="relative h-16 w-16">
+                <svg viewBox="0 0 64 64" className="h-16 w-16 -rotate-90">
+                  <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="4" />
+                  <circle
+                    cx="32"
+                    cy="32"
+                    r="28"
+                    fill="none"
+                    stroke="#F2A900"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeDasharray={2 * Math.PI * 28}
+                    strokeDashoffset={2 * Math.PI * 28 * (1 - progress)}
+                    style={{ transition: "stroke-dashoffset 180ms linear" }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <CameraIcon size={24} className={locked ? "text-gold" : "text-white/60"} />
+                </div>
+              </div>
+
+              <AnimatePresence mode="wait">
                 <motion.div
-                  key={detecting ? "found" : "searching"}
-                  initial={{ opacity: 0, y: -6 }}
+                  key={guidance(scanState, cameraReady)}
+                  initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
-                  className={`text-xs font-medium px-3 py-1.5 rounded-full backdrop-blur ${
-                    detecting ? "bg-gold/90 text-black" : "bg-white/10 text-white/80"
+                  className={`text-sm font-medium px-4 py-2 rounded-full backdrop-blur ${
+                    locked ? "bg-gold/90 text-black" : "bg-white/10 text-white/85"
                   }`}
                 >
-                  {cameraReady
-                    ? detecting
-                      ? `${quads.length}枚 検出中`
-                      : "カードを枠に収めてください…"
-                    : "カメラ起動中…"}
+                  {guidance(scanState, cameraReady)}
                 </motion.div>
+              </AnimatePresence>
+
+              {/* Escape hatch: only appears when auto-detection cannot get a lock. */}
+              <AnimatePresence>
+                {showManual && (
+                  <motion.button
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    onClick={captureFullFrame}
+                    className="pointer-events-auto text-xs font-medium text-white/80 underline underline-offset-4 px-4 py-2"
+                  >
+                    うまく読めないときは手動で撮影
+                  </motion.button>
+                )}
               </AnimatePresence>
             </div>
           </>
@@ -283,28 +420,6 @@ export function CameraCapture({
           </div>
         )}
       </div>
-
-      {/* Shutter bar */}
-      {!cameraError && (
-        <div className="pb-safe pt-4 bg-black flex items-center justify-center gap-10">
-          <label className="text-white/70 text-xs flex flex-col items-center gap-1 cursor-pointer">
-            <span className="h-11 w-11 rounded-full bg-white/10 flex items-center justify-center text-white">
-              <PhotoIcon size={22} />
-            </span>
-            写真
-            <input type="file" accept="image/*" onChange={onFilePick} className="hidden" />
-          </label>
-          <button
-            onClick={shoot}
-            disabled={!cameraReady || capturing}
-            aria-label="撮影"
-            className="h-[74px] w-[74px] rounded-full bg-white ring-4 ring-white/30 active:scale-90 transition-transform disabled:opacity-40 flex items-center justify-center"
-          >
-            <span className="h-[62px] w-[62px] rounded-full border-2 border-black/10 bg-white" />
-          </button>
-          <div className="w-11" />
-        </div>
-      )}
     </div>
   );
 }

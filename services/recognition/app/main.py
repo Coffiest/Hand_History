@@ -8,6 +8,9 @@ The heavy per-card inference is fanned out across a process pool (see pipeline).
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,9 +65,32 @@ app.add_middleware(
 )
 
 
+@lru_cache(maxsize=1)
+def _rank_model_info() -> dict[str, Any]:
+    """Metadata about the rank model baked into this image.
+
+    Reported by /v1/health so a deploy can be verified from the outside: a
+    plain {"status": "ok"} looks identical whether or not a new model actually
+    shipped. Reading the bundle is cheap and cached, and a failure here must
+    never take the health check down.
+    """
+    try:
+        import joblib
+
+        bundle = joblib.load(Path(__file__).resolve().parent.parent / "models" / "rank_multiscan_hog_svm_v2.joblib")
+        return {
+            "images": bundle.get("number_of_usable_images"),
+            "accuracy": round(float(bundle.get("overall_accuracy", 0.0)), 2),
+            "accepted_accuracy": round(float(bundle.get("accepted_accuracy", 0.0)), 2),
+            "version": bundle.get("model_version"),
+        }
+    except Exception:
+        return {"error": "unavailable"}
+
+
 @app.get("/v1/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    return {"status": "ok", "rank_model": _rank_model_info()}
 
 
 @app.post("/v1/recognize", response_model=RecognizeResponse)

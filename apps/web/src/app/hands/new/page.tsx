@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { CaptureFlow } from "@/components/CaptureFlow";
+import { CaptureFlow, type CaptureResult } from "@/components/CaptureFlow";
 import { ActionEntryForm } from "@/components/ActionEntryForm";
 import { PlayingCard } from "@/components/PlayingCard";
 import { CameraIcon, ChevronDownIcon, ChevronLeftIcon } from "@/components/icons";
@@ -21,7 +21,16 @@ import {
 
 const POSITIONS = ["BTN", "SB", "BB", "UTG", "UTG1", "UTG2", "LJ", "HJ", "CO"];
 
-type CaptureTarget = null | { kind: "hole" } | { kind: "board" };
+function toConfirmCards(cards: RecordedCard[]): ConfirmCard[] {
+  return cards.map((c) => ({
+    rank: c.rank,
+    suit: c.suit,
+    rankConfidence: c.rankConfidence,
+    suitConfidence: c.suitConfidence,
+    source: c.source,
+    accepted: true,
+  }));
+}
 
 function toRecordedCards(
   cards: ConfirmCard[],
@@ -53,7 +62,7 @@ export default function NewHandPage() {
 
   const [holeCards, setHoleCards] = useState<RecordedCard[]>([]);
   const [boardCards, setBoardCards] = useState<RecordedCard[]>([]);
-  const [capture, setCapture] = useState<CaptureTarget>(null);
+  const [scanning, setScanning] = useState(false);
 
   const [heroPosition, setHeroPosition] = useState<string | null>(null);
   const [numPlayers, setNumPlayers] = useState<number | null>(null);
@@ -72,14 +81,10 @@ export default function NewHandPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onHoleDone = (cards: ConfirmCard[]) => {
-    setHoleCards(toRecordedCards(cards, "hole", () => null));
-    setCapture(null);
-  };
-
-  const onBoardDone = (cards: ConfirmCard[]) => {
-    setBoardCards(toRecordedCards(cards, "board", boardStreetForPosition));
-    setCapture(null);
+  const onScanDone = ({ hole, board }: CaptureResult) => {
+    setHoleCards(toRecordedCards(hole, "hole", () => null));
+    setBoardCards(toRecordedCards(board, "board", boardStreetForPosition));
+    setScanning(false);
   };
 
   const save = async () => {
@@ -108,25 +113,15 @@ export default function NewHandPage() {
     }
   };
 
-  // Active capture overlay.
-  if (capture?.kind === "hole") {
+  // Scanning session: one camera for both hole cards and the board, routed by
+  // how many cards are held up.
+  if (scanning) {
     return (
       <CaptureFlow
-        title="ホールカード"
-        hint="自分の2枚をまとめて撮影"
-        expectedCount={2}
-        onDone={onHoleDone}
-        onCancel={() => setCapture(null)}
-      />
-    );
-  }
-  if (capture?.kind === "board") {
-    return (
-      <CaptureFlow
-        title="ボード"
-        hint="場のカード（3〜5枚）をまとめて撮影"
-        onDone={onBoardDone}
-        onCancel={() => setCapture(null)}
+        initialHole={toConfirmCards(holeCards)}
+        initialBoard={toConfirmCards(boardCards)}
+        onDone={onScanDone}
+        onCancel={() => setScanning(false)}
       />
     );
   }
@@ -170,7 +165,7 @@ export default function NewHandPage() {
               )}
             </div>
             <button
-              onClick={() => setCapture({ kind: "hole" })}
+              onClick={() => setScanning(true)}
               className="ml-auto flex items-center gap-1.5 rounded-2xl bg-gold text-black text-sm font-semibold px-4 py-2.5 active:scale-95 transition-transform"
             >
               <CameraIcon size={18} />
@@ -191,7 +186,7 @@ export default function NewHandPage() {
               )}
             </div>
             <button
-              onClick={() => setCapture({ kind: "board" })}
+              onClick={() => setScanning(true)}
               className="mt-3 w-full flex items-center justify-center gap-1.5 rounded-2xl bg-surface ring-1 ring-border text-ink text-sm font-semibold py-2.5 active:scale-[0.98] transition-transform"
             >
               <CameraIcon size={18} />
