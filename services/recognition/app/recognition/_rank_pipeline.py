@@ -2167,17 +2167,19 @@ def deduplicate_rank_pairs(
     return unique
 
 def extract_multiscan_rank_pairs(
-    image
+    image,
+    quad_candidates=None
 ):
     rgb_image = np.array(
         image.convert("RGB")
     )
 
-    quad_candidates = (
-        detect_card_quad_candidates(
-            rgb_image
+    if quad_candidates is None:
+        quad_candidates = (
+            detect_card_quad_candidates(
+                rgb_image
+            )
         )
-    )
 
     all_pair_candidates = []
 
@@ -2847,6 +2849,101 @@ def predict_sample(
 
     return best
 
+# ==========================================================
+# 分離済みカードの直接入力 (card_recognizer_integrated_v3.ipynb)
+#
+# splitterが既にカードを切り出しているのに、Rank側でも外周を再検出すると
+# カードの内側をさらに小さく切り出してしまい、数字が欠けたり歪んだりする。
+# 分離画像は「画面全体がカード」として扱い、外周再検出を行わない。
+# ==========================================================
+
+# 分離カードの外周をさらに削る割合。0で無効(v3の既定値)。
+SPLIT_CARD_TRIM_RATIO = 0.0
+
+# 直接入力が完全に失敗したときだけ、従来の外周再検出へ戻すか。
+ALLOW_RANK_REDETECT_FALLBACK = True
+
+
+def prepare_split_card_direct_image(image):
+    """分離済みカードを、外周再検出なしでRank入力へ整える。"""
+
+    rgb_image = np.array(image.convert("RGB"))
+    image_height, image_width = rgb_image.shape[:2]
+
+    # splitterが横向きで保存した場合だけ縦向きへ揃える。
+    # 上下の向きは後段の0・90・180・270度走査で決定する。
+    if image_width > image_height:
+        rgb_image = cv2.rotate(rgb_image, cv2.ROTATE_90_CLOCKWISE)
+        image_height, image_width = rgb_image.shape[:2]
+
+    trim_ratio = float(np.clip(SPLIT_CARD_TRIM_RATIO, 0.0, 0.10))
+    trim_x = int(image_width * trim_ratio)
+    trim_y = int(image_height * trim_ratio)
+
+    if trim_x > 0 or trim_y > 0:
+        x1, y1 = trim_x, trim_y
+        x2, y2 = image_width - trim_x, image_height - trim_y
+        if x2 - x1 >= 16 and y2 - y1 >= 16:
+            rgb_image = rgb_image[y1:y2, x1:x2]
+
+    return Image.fromarray(rgb_image, mode="RGB")
+
+
+def full_frame_quad_candidates(rgb_image):
+    """画像の四隅をカード四隅として返す。輪郭検出は行わない。"""
+
+    image_height, image_width = rgb_image.shape[:2]
+
+    quad = np.array(
+        [
+            [0, 0],
+            [image_width - 1, 0],
+            [image_width - 1, image_height - 1],
+            [0, image_height - 1],
+        ],
+        dtype=np.float32,
+    )
+
+    return [
+        {
+            "quad": quad,
+            "score": 1.0,
+            "normalized_quad_score": 1.0,
+            "method": "split_card_full_frame",
+        }
+    ]
+
+
+def extract_multiscan_rank_pairs_from_split_card(image):
+    """分離カード全体を直接正規化してV2ランク候補を作る。"""
+
+    direct_image = prepare_split_card_direct_image(image)
+    direct_rgb = np.array(direct_image.convert("RGB"))
+    quad_candidates = full_frame_quad_candidates(direct_rgb)
+
+    candidates = extract_multiscan_rank_pairs(
+        direct_image,
+        quad_candidates=quad_candidates,
+    )
+
+    for candidate in candidates:
+        candidate["input_mode"] = "split_card_direct"
+        candidate["quad_method"] = "split_card_full_frame"
+
+    # 直接入力が完全に失敗した場合のみ、従来方式へ戻す。
+    if (
+        ALLOW_RANK_REDETECT_FALLBACK
+        and candidates
+        and float(candidates[0].get("score", 0.0)) <= 0.0
+    ):
+        fallback_candidates = extract_multiscan_rank_pairs(image)
+        for candidate in fallback_candidates:
+            candidate["input_mode"] = "redetect_fallback"
+        return fallback_candidates
+
+    return candidates
+
+
 def prepare_unknown_sample(
     image_path
 ):
@@ -2855,7 +2952,7 @@ def prepare_unknown_sample(
     ).convert("RGB")
 
     candidates = (
-        extract_multiscan_rank_pairs(
+        extract_multiscan_rank_pairs_from_split_card(
             source_image
         )
     )

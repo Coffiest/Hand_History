@@ -13,8 +13,16 @@ import cv2
 import numpy as np
 
 # Output size of each straightened card crop.
-CARD_W = 256
-CARD_H = 392
+#
+# This must match the rank model's normalisation size (CARD_WIDTH/CARD_HEIGHT in
+# _rank_pipeline.py = 600x900). The splitter used to emit 256x392 — a display
+# size inherited from card_splitter_first.py — which the rank pipeline then
+# stretched back up to 600x900. That threw away more than half the pixels of
+# the rank glyph before the HOG features were computed. Cropping straight to
+# the model's own size keeps the digits at the resolution the model was
+# trained on.
+CARD_W = 600
+CARD_H = 900
 PADDING_RATIO = 0.06
 
 
@@ -72,7 +80,14 @@ def warp_card(image: np.ndarray, box: np.ndarray,
     if warped.shape[1] > warped.shape[0]:
         warped = cv2.rotate(warped, cv2.ROTATE_90_CLOCKWISE)
 
-    warped = cv2.resize(warped, output_size)
+    # INTER_AREA when shrinking (best for downscaling), INTER_CUBIC when the
+    # card occupied fewer pixels than the target and has to be enlarged.
+    shrinking = warped.shape[1] > output_size[0]
+    warped = cv2.resize(
+        warped,
+        output_size,
+        interpolation=cv2.INTER_AREA if shrinking else cv2.INTER_CUBIC,
+    )
     return warped
 
 
