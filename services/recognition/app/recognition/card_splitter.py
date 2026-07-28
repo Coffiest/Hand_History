@@ -131,13 +131,15 @@ def non_max_suppression(candidates: list[dict], iou_threshold: float = 0.3) -> l
     return selected
 
 
-def detect_card_regions(image: np.ndarray) -> tuple[list[dict], np.ndarray]:
-    """Detect card-shaped quads in a BGR image, auto-selecting the card count.
+def detect_card_regions(
+    image: np.ndarray, num_cards: int | None = None
+) -> tuple[list[dict], np.ndarray]:
+    """Detect card-shaped quads in a BGR image. Candidates are sorted left → right.
 
-    Ported from the updated ``card_splitter_first.py``: instead of a fixed
-    ``num_cards``, every candidate whose area is at least 30% of the largest
-    candidate's area is kept (so 2 hole cards or a 3-5 card board are detected
-    without the caller stating how many). Candidates are sorted left → right.
+    ``num_cards`` reproduces ``card_splitter_first.py`` exactly: the N largest
+    candidates are kept and everything else is discarded. Leaving it None keeps
+    every candidate at least 30% of the largest one's area, which is only safe
+    when nothing else card-shaped can be in frame.
 
     NOTE: the uploaded script contained a bug where this 30% filter was computed
     into ``selected`` and then immediately overwritten by
@@ -215,8 +217,14 @@ def detect_card_regions(image: np.ndarray) -> tuple[list[dict], np.ndarray]:
     candidates = sorted(candidates, key=lambda x: x["area"], reverse=True)
     candidates = non_max_suppression(candidates, iou_threshold=0.3)
 
-    # Keep every candidate whose area is >= 30% of the largest card's area.
-    if candidates:
+    if num_cards is not None:
+        # The research script's behaviour: take exactly the N largest candidates.
+        # This is what keeps a phone, a betting slip or a hand in frame from
+        # being served up as an extra "card" — anything past the Nth is dropped.
+        selected = candidates[:num_cards]
+    elif candidates:
+        # No count known (the caller could not say how many cards to expect):
+        # fall back to every candidate at least 30% of the largest one's area.
         largest_area = candidates[0]["area"]
         selected = [c for c in candidates if c["area"] >= largest_area * 0.3]
     else:
@@ -231,11 +239,11 @@ def detect_card_regions(image: np.ndarray) -> tuple[list[dict], np.ndarray]:
     return selected, edges_closed
 
 
-def split_cards(image: np.ndarray) -> list[np.ndarray]:
+def split_cards(image: np.ndarray, num_cards: int | None = None) -> list[np.ndarray]:
     """Detect and straighten cards, returning a list of BGR crop arrays.
 
-    Ordered left → right. The card count is auto-detected (every card whose area
-    is >= 30% of the largest detected card).
+    Ordered left → right. Pass ``num_cards`` whenever the caller knows how many
+    cards are in frame — the live scanner does — so only that many are kept.
     """
-    selected, _ = detect_card_regions(image)
+    selected, _ = detect_card_regions(image, num_cards=num_cards)
     return [warp_card(image, card["box"]) for card in selected]

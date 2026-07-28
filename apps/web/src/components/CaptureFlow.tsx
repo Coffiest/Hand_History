@@ -5,7 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CameraCapture } from "./CameraCapture";
 import { CardConfirmSheet, type CardRole, type ConfirmCard } from "./CardConfirmSheet";
 import { AlertIcon } from "@/components/icons";
-import { recognizeCards, RecognitionError, type RecognizedCard } from "@/lib/recognitionApi";
+import { RecognitionDebugView } from "./RecognitionDebugView";
+import { recognizeCards, RecognitionError, type RecognizeResult } from "@/lib/recognitionApi";
 
 // A continuous scanning session. The camera is mounted for the whole session —
 // recognising and confirming are layered on top of it — so accepting a result
@@ -18,8 +19,8 @@ import { recognizeCards, RecognitionError, type RecognizedCard } from "@/lib/rec
 type Phase =
   | { s: "scanning" }
   | { s: "recognizing" }
-  | { s: "confirm"; cards: RecognizedCard[] }
-  | { s: "error"; message: string; blob: Blob };
+  | { s: "confirm"; result: RecognizeResult }
+  | { s: "error"; message: string; blob: Blob; count?: number };
 
 export type CaptureResult = { hole: ConfirmCard[]; board: ConfirmCard[] };
 
@@ -37,15 +38,20 @@ export function CaptureFlow({
   const [phase, setPhase] = useState<Phase>({ s: "scanning" });
   const [hole, setHole] = useState<ConfirmCard[]>(initialHole);
   const [board, setBoard] = useState<ConfirmCard[]>(initialBoard);
+  const [debugResult, setDebugResult] = useState<RecognizeResult | null>(null);
 
-  async function recognize(blob: Blob) {
+  // The scanner tells us how many cards it locked onto. Passing that through
+  // keeps the splitter to exactly that many candidates, so a phone or a hand in
+  // frame cannot come back as an extra card. Debug images always come with it —
+  // they are what makes a bad read diagnosable instead of mysterious.
+  async function recognize(blob: Blob, count?: number) {
     setPhase({ s: "recognizing" });
     try {
-      const result = await recognizeCards(blob);
-      setPhase({ s: "confirm", cards: result.cards });
+      const result = await recognizeCards(blob, { expectedCount: count, debug: true });
+      setPhase({ s: "confirm", result });
     } catch (err) {
       const message = err instanceof RecognitionError ? err.message : "認識に失敗しました。";
-      setPhase({ s: "error", message, blob });
+      setPhase({ s: "error", message, blob, count });
     }
   }
 
@@ -89,9 +95,10 @@ export function CaptureFlow({
         {phase.s === "confirm" && (
           <CardConfirmSheet
             key="confirm"
-            recognized={phase.cards}
+            recognized={phase.result.cards}
             onConfirm={accept}
             onRetake={() => setPhase({ s: "scanning" })}
+            onShowDebug={() => setDebugResult(phase.result)}
           />
         )}
 
@@ -117,7 +124,7 @@ export function CaptureFlow({
                   撮り直す
                 </button>
                 <button
-                  onClick={() => recognize(phase.blob)}
+                  onClick={() => recognize(phase.blob, phase.count)}
                   className="flex-[2] py-3.5 rounded-2xl bg-gold text-black font-semibold"
                 >
                   再試行
@@ -125,6 +132,12 @@ export function CaptureFlow({
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {debugResult && (
+          <RecognitionDebugView result={debugResult} onClose={() => setDebugResult(null)} />
         )}
       </AnimatePresence>
     </>

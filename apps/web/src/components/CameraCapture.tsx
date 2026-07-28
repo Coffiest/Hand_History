@@ -58,7 +58,8 @@ export function CameraCapture({
   canFinish?: boolean;
   /** Stop polling while an overlay (recognising / confirm sheet) is up. */
   paused?: boolean;
-  onCapture: (blob: Blob) => void;
+  /** `count` is how many cards the scanner locked onto for this shot. */
+  onCapture: (blob: Blob, count?: number) => void;
   onCancel: () => void;
   onFinish?: () => void;
 }) {
@@ -135,12 +136,15 @@ export function CameraCapture({
     return canvas;
   }, []);
 
-  const captureFullFrame = useCallback(async () => {
-    const canvas = grabFrame(); // full resolution
-    if (!canvas) return;
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.92));
-    if (blob) onCaptureRef.current(blob);
-  }, [grabFrame]);
+  const captureFullFrame = useCallback(
+    async (count?: number) => {
+      const canvas = grabFrame(); // full resolution
+      if (!canvas) return;
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.92));
+      if (blob) onCaptureRef.current(blob, count);
+    },
+    [grabFrame],
+  );
 
   // ── Detection polling + auto-fire ─────────────────────────────────────────
   useEffect(() => {
@@ -190,7 +194,7 @@ export function CameraCapture({
                   setFlash(true);
                   window.setTimeout(() => setFlash(false), 220);
                   navigator.vibrate?.(30);
-                  await captureFullFrame();
+                  await captureFullFrame(state.count);
                 } else if (state.kind === "ready" || state.kind === "settling") {
                   lastLockRef.current = now;
                   setShowManual(false);
@@ -398,7 +402,7 @@ export function CameraCapture({
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 8 }}
-                    onClick={captureFullFrame}
+                    onClick={() => captureFullFrame(quads.length || undefined)}
                     className="pointer-events-auto text-xs font-medium text-white/80 underline underline-offset-4 px-4 py-2"
                   >
                     うまく読めないときは手動で撮影

@@ -25,6 +25,10 @@ class RankResult:
     confidence: float | None
     margin: float | None
     accepted: bool
+    # Populated only when predict(..., debug=True): the intermediate images and
+    # numbers the v3 notebook writes to _rank_debug/, so a bad read can be
+    # diagnosed from the app instead of guessing.
+    debug: dict[str, Any] | None = None
 
 
 def rank_to_display(rank: int | None) -> str:
@@ -50,10 +54,13 @@ class RankClassifier:
         if "scan_offsets" in self.model_bundle:
             rp.SCAN_OFFSETS = self.model_bundle["scan_offsets"]
 
-    def predict(self, image_path: Path) -> RankResult:
+    def predict(self, image_path: Path, debug: bool = False) -> RankResult:
         sample = rp.prepare_unknown_sample(str(image_path))
         raw = rp.predict_sample(sample, self.model_bundle)
-        return self._normalise(raw)
+        result = self._normalise(raw)
+        if debug:
+            result.debug = _collect_debug(raw, self.model_bundle)
+        return result
 
     def _normalise(self, raw: Any) -> RankResult:
         if not isinstance(raw, dict):
@@ -82,3 +89,69 @@ class RankClassifier:
 def joblib_load(path: Path) -> dict:
     import joblib
     return joblib.load(path)
+
+
+def _png_data_uri(path_or_array: Any) -> str | None:
+    """Encode an image (file path or array) as a data: URI for the client."""
+    import base64
+
+    import cv2
+    import numpy as np
+
+    try:
+        if isinstance(path_or_array, (str, Path)):
+            image = cv2.imread(str(path_or_array), cv2.IMREAD_UNCHANGED)
+        else:
+            image = np.asarray(path_or_array)
+        if image is None or image.size == 0:
+            return None
+        ok, buf = cv2.imencode(".png", image)
+        if not ok:
+            return None
+        return "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+    except Exception:
+        return None
+
+
+def _collect_debug(raw: dict, bundle: dict) -> dict[str, Any]:
+    """Gather the v3 notebook's rank debug artefacts for the chosen candidate.
+
+    Mirrors what card_recognizer_integrated_v3.ipynb saves under _rank_debug/:
+    the rectified card, the black-and-white top/bottom digit images actually fed
+    to the classifier, the extraction score, rotation and scan window, plus the
+    top 3 classes. Everything is returned inline — nothing is written to disk.
+    """
+    import numpy as np
+
+    candidate = raw.get("candidate", {}) or {}
+    probability = raw.get("probability")
+
+    top3: list[dict[str, Any]] = []
+    if probability is not None:
+        probs = np.asarray(probability, dtype=float).reshape(-1)
+        for class_index in np.argsort(probs)[::-1][:3]:
+            top3.append(
+                {
+                    "rank": int(class_index) + 1,
+                    "probability": round(float(probs[class_index]), 4),
+                }
+            )
+
+    window = candidate.get("window") or {}
+    return {
+        "rectified_image": _png_data_uri(candidate.get("rectified_image"))
+        if candidate.get("rectified_image") is not None
+        else None,
+        "top_image": _png_data_uri(candidate.get("top_path")),
+        "bottom_image": _png_data_uri(candidate.get("bottom_path")),
+        "top_prediction": (int(raw["top_prediction"]) + 1) if raw.get("top_prediction") is not None else None,
+        "bottom_prediction": (int(raw["bottom_prediction"]) + 1) if raw.get("bottom_prediction") is not None else None,
+        "extraction_score": round(float(candidate.get("score", 0.0)), 4),
+        "similarity": round(float(candidate.get("similarity", 0.0)), 4),
+        "rotation": int(candidate.get("rotation", 0)),
+        "input_mode": candidate.get("input_mode"),
+        "quad_method": candidate.get("quad_method"),
+        "window": {k: round(float(v), 3) for k, v in window.items()} if window else None,
+        "candidate_count": len(raw.get("all_evaluated_candidates") or []),
+        "top3": top3,
+    }
