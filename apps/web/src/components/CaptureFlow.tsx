@@ -105,7 +105,7 @@ export function CaptureFlow({
         {phase.s === "error" && (
           <motion.div
             key="error"
-            className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl bg-bg shadow-lift p-6 pb-safe"
+            className="fixed inset-x-0 bottom-0 z-50 rounded-t-[28px] glass-strong iris-edge p-6 pb-safe"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
@@ -119,13 +119,13 @@ export function CaptureFlow({
               <div className="flex gap-3 w-full pt-1">
                 <button
                   onClick={() => setPhase({ s: "scanning" })}
-                  className="flex-1 py-3.5 rounded-2xl bg-surface text-gray2 font-medium ring-1 ring-border"
+                  className="flex-1 py-3.5 rounded-2xl bg-white/70 text-gray2 font-medium ring-1 ring-border active:scale-[0.98] transition-transform"
                 >
                   撮り直す
                 </button>
                 <button
                   onClick={() => recognize(phase.blob, phase.count)}
-                  className="flex-[2] py-3.5 rounded-2xl bg-gold text-black font-semibold"
+                  className="flex-[2] py-3.5 rounded-2xl bg-gold text-black font-semibold shadow-gold active:scale-[0.98] transition-transform"
                 >
                   再試行
                 </button>

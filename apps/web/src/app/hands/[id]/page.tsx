@@ -48,8 +48,8 @@ export default function HandDetailPage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <header className="sticky top-0 z-10 bg-bg/85 backdrop-blur-md border-b border-border">
+    <div className="min-h-dvh bg-bg flex flex-col">
+      <header className="sticky top-0 z-10 glass" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
           <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-gray2 active:scale-95 transition-transform">
             <ChevronLeftIcon size={18} /> 戻る

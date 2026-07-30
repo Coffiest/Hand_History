@@ -33,7 +33,7 @@ export function ManualCardPicker({
       <motion.div
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="w-full sm:max-w-md bg-bg rounded-t-4xl sm:rounded-4xl p-6 pb-safe shadow-lift"
+        className="w-full sm:max-w-md glass-strong iris-edge rounded-t-[28px] sm:rounded-4xl p-6 pb-safe"
       >
         <div className="text-center mb-5">
           <h3 className="text-lg font-semibold text-ink">カードを選択</h3>
@@ -47,7 +47,7 @@ export function ManualCardPicker({
               key={s}
               onClick={() => setSuit(s)}
               className={`h-16 rounded-2xl text-3xl flex items-center justify-center transition-all ${
-                suit === s ? "bg-white ring-2 ring-gold shadow-card scale-105" : "bg-surface ring-1 ring-border"
+                suit === s ? "bg-white ring-2 ring-gold shadow-card scale-105" : "bg-white/60 ring-1 ring-border"
               }`}
               style={{ color: SUIT_COLOR[s] }}
             >

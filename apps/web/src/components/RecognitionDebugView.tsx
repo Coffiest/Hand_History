@@ -57,7 +57,7 @@ export function RecognitionDebugView({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
     >
-      <header className="shrink-0 border-b border-border px-4 h-14 flex items-center justify-between">
+      <header className="shrink-0 glass px-4 h-14 flex items-center justify-between" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
         <div>
           <h2 className="text-base font-semibold text-ink">認識の詳細</h2>
           <p className="text-[11px] text-gray3">どの工程で崩れているか確認できます</p>
@@ -81,7 +81,7 @@ export function RecognitionDebugView({
             <Shot src={splitter?.annotated} label="検出した枠" />
             <Shot src={splitter?.mask} label="エッジ（輪郭の元）" dark />
           </div>
-          <div className="mt-2 rounded-2xl bg-white ring-1 ring-border px-4 py-2.5">
+          <div className="mt-2 glass rounded-2xl px-4 py-2.5">
             <Row label="検出枚数" value={`${splitter?.detected_count ?? result.count} 枚`} />
             {splitter?.candidates?.map((c) => (
               <Row
@@ -116,7 +116,7 @@ export function RecognitionDebugView({
                 <Shot src={d?.bottom_image} label={`右下の数字（→ ${d?.bottom_prediction ?? "?"}）`} dark />
               </div>
 
-              <div className="mt-2 rounded-2xl bg-white ring-1 ring-border px-4 py-2.5">
+              <div className="mt-2 glass rounded-2xl px-4 py-2.5">
                 <Row label="最終判定" value={`${card.rank_label}${card.suit}`} />
                 <Row
                   label="ランク確信度"
@@ -141,7 +141,7 @@ export function RecognitionDebugView({
               </div>
 
               {d?.top3 && d.top3.length > 0 && (
-                <div className="mt-2 rounded-2xl bg-white ring-1 ring-border px-4 py-2.5">
+                <div className="mt-2 glass rounded-2xl px-4 py-2.5">
                   <div className="text-[11px] text-gray3 mb-1.5">ランクの上位3候補</div>
                   {d.top3.map((t) => (
                     <div key={t.rank} className="flex items-center gap-2 py-0.5">
@@ -163,7 +163,7 @@ export function RecognitionDebugView({
               )}
 
               {d?.suit_probabilities && (
-                <div className="mt-2 rounded-2xl bg-white ring-1 ring-border px-4 py-2.5">
+                <div className="mt-2 glass rounded-2xl px-4 py-2.5">
                   <div className="text-[11px] text-gray3 mb-1.5">スートの確率</div>
                   {Object.entries(d.suit_probabilities).map(([code, p]) => (
                     <div key={code} className="flex items-center gap-2 py-0.5">

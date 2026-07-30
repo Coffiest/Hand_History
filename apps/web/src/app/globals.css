@@ -2,14 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ──────────────────────────────────────────────────────────────────────────
+   White Cube (v0.7.0)
+
+   A white gallery with liquid-glass surfaces. All shared visual language —
+   glass, the iridescent edge, floating artwork, ambient light — is defined
+   here once so components never hand-roll their own variants.
+   ────────────────────────────────────────────────────────────────────────── */
+
 :root {
   color-scheme: light;
+  /* Iridescence: gold-anchored spectrum used ONLY for edges/strokes/light. */
+  --iris: conic-gradient(
+    from 210deg,
+    #f2a900,
+    #ff6b9d 25%,
+    #7c6fff 50%,
+    #4ed0c1 75%,
+    #f2a900
+  );
 }
 
 html,
 body {
-  background: #fffbf5;
-  color: #1d1d1f;
+  background: #ffffff;
+  color: #0a0a0c;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior-y: none;
@@ -22,6 +39,100 @@ body {
 .tabular-nums {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+}
+
+/* ── Liquid glass ─────────────────────────────────────────────────────────
+   Standard surface: readable (>= .72 white behind text), specular top edge,
+   diffuse floating shadow. `glass-strong` for sheets/tab bar that sit over
+   busy content (camera, artwork) and need more isolation. */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(10, 10, 12, 0.08);
+  box-shadow:
+    0 8px 32px rgba(10, 10, 12, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.85);
+  -webkit-backdrop-filter: blur(32px) saturate(1.7);
+  backdrop-filter: blur(32px) saturate(1.7);
+  border: 1px solid rgba(10, 10, 12, 0.08);
+  box-shadow:
+    0 16px 48px rgba(10, 10, 12, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+/* Dark glass for pills/controls layered over the live camera. */
+.glass-dark {
+  background: rgba(20, 20, 24, 0.55);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* ── Iridescent edge ──────────────────────────────────────────────────────
+   A 1px spectrum hairline around a glass element. Implemented as a masked
+   overlay so it works on any radius; keep opacity low — it should read as
+   light catching an edge, never as a rainbow border. */
+.iris-edge {
+  position: relative;
+}
+.iris-edge::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--iris);
+  opacity: 0.28;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Ambient light ────────────────────────────────────────────────────────
+   The gallery's only colour on white walls: one huge, slow, soft iridescent
+   glow. Position per screen; keep opacity <= .16 so text stays AAA. */
+.iris-bloom {
+  position: absolute;
+  border-radius: 9999px;
+  background: var(--iris);
+  filter: blur(90px);
+  opacity: 0.14;
+  animation: iris-drift 18s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes iris-drift {
+  from {
+    transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1);
+  }
+  to {
+    transform: translate3d(4%, 3%, 0) rotate(40deg) scale(1.08);
+  }
+}
+
+/* Floating artwork: slow vertical drift for hero cards. Stagger with delay. */
+.float {
+  animation: float-y 6s ease-in-out infinite alternate;
+}
+@keyframes float-y {
+  from {
+    transform: translateY(-5px);
+  }
+  to {
+    transform: translateY(6px);
+  }
 }
 
 /* Respect the OS "reduce motion" setting (Apple HIG / WCAG). */

@@ -56,7 +56,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
+    <div className="min-h-dvh bg-bg flex flex-col relative overflow-hidden">
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-10">
         {/* Hero: fanned cards over a soft gold glow */}
         <motion.div
@@ -65,15 +65,15 @@ export default function LoginPage() {
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           className="relative mb-8"
         >
-          <div className="absolute inset-0 -m-8 rounded-full bg-gold/15 blur-2xl" aria-hidden="true" />
+          <div className="iris-bloom -inset-16" aria-hidden="true" />
           <div className="relative flex items-end justify-center">
-            <div className="rotate-[-14deg] translate-x-3 translate-y-1">
+            <div className="rotate-[-14deg] translate-x-3 translate-y-1 float" style={{ animationDelay: "0s" }}>
               <PlayingCard card={{ rank: 1, suit: "s" }} size="lg" />
             </div>
-            <div className="z-10">
+            <div className="z-10 float" style={{ animationDelay: "1.2s" }}>
               <PlayingCard card={{ rank: 13, suit: "h" }} size="lg" dealDelay={0.08} />
             </div>
-            <div className="rotate-[14deg] -translate-x-3 translate-y-1">
+            <div className="rotate-[14deg] -translate-x-3 translate-y-1 float" style={{ animationDelay: "2.4s" }}>
               <PlayingCard card={{ rank: 12, suit: "d" }} size="lg" dealDelay={0.16} />
             </div>
           </div>
@@ -108,7 +108,7 @@ export default function LoginPage() {
             type="email"
             autoComplete="email"
             placeholder="メールアドレス"
-            className="w-full h-12 rounded-2xl bg-white ring-1 ring-border px-4 text-[15px] text-ink placeholder:text-gray3 focus:outline-none focus:ring-2 focus:ring-gold"
+            className="w-full h-12 rounded-2xl glass px-4 text-[15px] text-ink placeholder:text-gray3 focus:outline-none focus:ring-2 focus:ring-gold"
           />
           <input
             value={password}
@@ -117,12 +117,12 @@ export default function LoginPage() {
             type="password"
             autoComplete="current-password"
             placeholder="パスワード"
-            className="w-full h-12 rounded-2xl bg-white ring-1 ring-border px-4 text-[15px] text-ink placeholder:text-gray3 focus:outline-none focus:ring-2 focus:ring-gold"
+            className="w-full h-12 rounded-2xl glass px-4 text-[15px] text-ink placeholder:text-gray3 focus:outline-none focus:ring-2 focus:ring-gold"
           />
           <button
             onClick={() => enter(email)}
             disabled={busy}
-            className="w-full h-12 rounded-2xl bg-gold text-black font-semibold shadow-card active:scale-[0.98] transition-transform disabled:opacity-50"
+            className="w-full h-12 rounded-2xl bg-gold text-black font-semibold shadow-gold active:scale-[0.98] transition-transform disabled:opacity-50"
           >
             {busy ? "ログイン中…" : "ログイン / 新規登録"}
           </button>
@@ -142,7 +142,7 @@ export default function LoginPage() {
             </button>
             <button
               onClick={() => social("google")}
-              className="h-12 rounded-2xl bg-white ring-1 ring-border text-ink text-sm font-semibold flex items-center justify-center gap-2 shadow-card active:scale-[0.97] transition-transform"
+              className="h-12 rounded-2xl glass text-ink text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.97] transition-transform"
             >
               <GoogleIcon /> Google
             </button>

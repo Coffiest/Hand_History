@@ -111,7 +111,7 @@ export function HandReplay({ hand }: { hand: StoredHand }) {
           <button
             onClick={play}
             disabled={playing}
-            className="flex items-center gap-2 rounded-full bg-ink text-white text-sm font-semibold px-6 py-2.5 active:scale-95 transition-transform disabled:opacity-50"
+            className="flex items-center gap-2 rounded-full bg-ink text-white text-sm font-semibold px-6 py-2.5 shadow-lift active:scale-95 transition-transform disabled:opacity-50"
           >
             <PlayIcon size={16} />
             {playing ? "再生中…" : "リプレイ"}
@@ -128,7 +128,7 @@ export function HandReplay({ hand }: { hand: StoredHand }) {
           const board = boardByStreet[street];
           if (actions.length === 0 && board.length === 0) return null;
           return (
-            <div key={street} className="rounded-2xl bg-white ring-1 ring-border p-4 shadow-card">
+            <div key={street} className="glass rounded-3xl p-4 shadow-card">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-sm font-semibold text-ink">{STREET_LABEL_JA[street]}</span>
                 {board.length > 0 && (
