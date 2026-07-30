@@ -24,8 +24,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <header className="sticky top-0 z-10 bg-bg/85 backdrop-blur-md border-b border-border">
+    <div className="min-h-dvh bg-bg flex flex-col">
+      <header className="sticky top-0 z-10 glass" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
           <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-gray2 active:scale-95 transition-transform">
             <ChevronLeftIcon size={18} /> 戻る
@@ -38,7 +38,7 @@ export default function SettingsPage() {
       <main className="flex-1 w-full max-w-lg mx-auto px-4 py-6 space-y-6">
         <section>
           <h2 className="text-xs font-semibold text-gray3 uppercase tracking-wider mb-2 px-1">アカウント</h2>
-          <div className="rounded-2xl bg-white ring-1 ring-border divide-y divide-border shadow-card overflow-hidden">
+          <div className="glass rounded-3xl divide-y divide-hairline overflow-hidden">
             <div className="px-4 py-3.5 flex items-center justify-between">
               <span className="text-sm text-gray2">メール</span>
               <span className="text-sm text-ink truncate max-w-[200px]">{email}</span>
@@ -59,7 +59,7 @@ export default function SettingsPage() {
 
         <section>
           <h2 className="text-xs font-semibold text-gray3 uppercase tracking-wider mb-2 px-1">このアプリについて</h2>
-          <div className="rounded-2xl bg-white ring-1 ring-border p-4 shadow-card text-sm text-gray2 space-y-2 leading-relaxed">
+          <div className="glass rounded-3xl p-4 text-sm text-gray2 space-y-2 leading-relaxed">
             <p>
               トランプをカメラで撮るだけで、ランクとスートを自動認識してポーカーのハンドを記録・共有できるアプリです（サービス名・アイコンは仮）。
             </p>

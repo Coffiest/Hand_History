@@ -72,7 +72,7 @@ export function CardConfirmSheet({
 
   return (
     <motion.div
-      className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl bg-bg shadow-lift max-h-[82vh] flex flex-col"
+      className="fixed inset-x-0 bottom-0 z-50 rounded-t-[28px] glass-strong iris-edge max-h-[82vh] flex flex-col"
       initial={{ y: "100%" }}
       animate={{ y: 0 }}
       exit={{ y: "100%" }}
@@ -85,7 +85,7 @@ export function CardConfirmSheet({
 
       {/* Where these cards will be recorded */}
       <div className="px-5 pt-2 pb-3 shrink-0">
-        <div className="flex rounded-2xl bg-surface ring-1 ring-border p-1">
+        <div className="flex rounded-2xl bg-ink/[0.05] p-1">
           {(["hole", "board"] as const).map((r) => (
             <button
               key={r}
@@ -154,17 +154,17 @@ export function CardConfirmSheet({
         </button>
       )}
 
-      <div className="p-5 pb-safe flex gap-3 shrink-0 border-t border-border">
+      <div className="p-5 pb-safe flex gap-3 shrink-0 border-t border-hairline">
         <button
           onClick={onRetake}
-          className="flex-1 py-3.5 rounded-2xl bg-surface text-gray2 font-medium ring-1 ring-border active:scale-[0.98] transition-transform"
+          className="flex-1 py-3.5 rounded-2xl bg-white/70 text-gray2 font-medium ring-1 ring-border active:scale-[0.98] transition-transform"
         >
           撮り直す
         </button>
         <button
           onClick={() => onConfirm(cards, role)}
           disabled={cards.length === 0}
-          className="flex-[2] py-3.5 rounded-2xl bg-gold text-black font-semibold disabled:opacity-40 active:scale-[0.98] transition-transform"
+          className="flex-[2] py-3.5 rounded-2xl bg-gold text-black font-semibold shadow-gold disabled:opacity-40 active:scale-[0.98] transition-transform"
         >
           {role === "hole" ? "ホールカードとして記録" : "ボードとして記録"}
         </button>

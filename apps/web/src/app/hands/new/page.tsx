@@ -131,7 +131,7 @@ export default function NewHandPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <header className="sticky top-0 z-10 bg-bg/80 backdrop-blur-md border-b border-border">
+      <header className="sticky top-0 z-10 glass" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
         <div className="max-w-lg mx-auto px-5 py-4 flex items-center justify-between">
           <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-gray2 active:scale-95 transition-transform">
             <ChevronLeftIcon size={18} /> 戻る
@@ -147,13 +147,13 @@ export default function NewHandPage() {
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-5 py-5 pb-16 space-y-6">
+      <main className="max-w-lg mx-auto px-5 py-5 pb-16 space-y-8">
         {error && <div className="rounded-2xl bg-suit-heart/10 text-suit-heart text-sm px-4 py-3">{error}</div>}
 
         {/* Hole cards */}
         <section>
           <h2 className="text-sm font-semibold text-gray2 mb-2">ホールカード</h2>
-          <div className="rounded-2xl bg-white ring-1 ring-border p-4 flex items-center gap-4 shadow-card">
+          <div className="glass rounded-3xl p-4 flex items-center gap-4">
             <div className="flex gap-2">
               {holeCards.length > 0 ? (
                 holeCards.map((c, i) => <PlayingCard key={i} card={c} size="lg" dealDelay={i * 0.05} />)
@@ -166,7 +166,7 @@ export default function NewHandPage() {
             </div>
             <button
               onClick={() => setScanning(true)}
-              className="ml-auto flex items-center gap-1.5 rounded-2xl bg-gold text-black text-sm font-semibold px-4 py-2.5 active:scale-95 transition-transform"
+              className="ml-auto flex items-center gap-1.5 rounded-2xl bg-gold text-black text-sm font-semibold px-4 py-2.5 shadow-gold active:scale-95 transition-transform"
             >
               <CameraIcon size={18} />
               {holeCards.length ? "撮り直す" : "撮影"}
@@ -177,7 +177,7 @@ export default function NewHandPage() {
         {/* Board */}
         <section>
           <h2 className="text-sm font-semibold text-gray2 mb-2">ボード</h2>
-          <div className="rounded-2xl bg-white ring-1 ring-border p-4 shadow-card">
+          <div className="glass rounded-3xl p-4">
             <div className="flex items-center gap-2 flex-wrap min-h-[80px]">
               {boardCards.length > 0 ? (
                 boardCards.map((c, i) => <PlayingCard key={i} card={c} size="md" dealDelay={i * 0.05} />)
@@ -187,7 +187,7 @@ export default function NewHandPage() {
             </div>
             <button
               onClick={() => setScanning(true)}
-              className="mt-3 w-full flex items-center justify-center gap-1.5 rounded-2xl bg-surface ring-1 ring-border text-ink text-sm font-semibold py-2.5 active:scale-[0.98] transition-transform"
+              className="mt-3 w-full flex items-center justify-center gap-1.5 rounded-2xl bg-white/70 ring-1 ring-border text-ink text-sm font-semibold py-2.5 active:scale-[0.98] transition-transform"
             >
               <CameraIcon size={18} />
               {boardCards.length ? "撮り直す" : "ボードを撮影"}
@@ -198,7 +198,7 @@ export default function NewHandPage() {
         {/* Position & blinds (optional) */}
         <section>
           <h2 className="text-sm font-semibold text-gray2 mb-2">ポジション・ブラインド（任意）</h2>
-          <div className="rounded-2xl bg-white ring-1 ring-border p-4 space-y-3 shadow-card">
+          <div className="glass rounded-3xl p-4 space-y-3">
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
               {POSITIONS.map((p) => (
                 <button
@@ -300,7 +300,7 @@ export default function NewHandPage() {
         {/* Result (optional) */}
         <section>
           <h2 className="text-sm font-semibold text-gray2 mb-2">結果・メモ（任意）</h2>
-          <div className="rounded-2xl bg-white ring-1 ring-border p-4 space-y-3 shadow-card">
+          <div className="glass rounded-3xl p-4 space-y-3">
             <div className="flex gap-2">
               <input
                 value={potTotal}
@@ -330,7 +330,7 @@ export default function NewHandPage() {
         <button
           onClick={save}
           disabled={saving || holeCards.length === 0}
-          className="w-full rounded-2xl bg-gold text-black font-semibold py-4 shadow-lift active:scale-[0.98] transition-transform disabled:opacity-40"
+          className="w-full rounded-2xl bg-gold text-black font-semibold py-4 shadow-gold active:scale-[0.98] transition-transform disabled:opacity-40"
         >
           {saving ? "保存中…" : "ハンドを保存"}
         </button>

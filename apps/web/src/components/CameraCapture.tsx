@@ -320,7 +320,7 @@ export function CameraCapture({
               {flash && (
                 <motion.div
                   aria-hidden
-                  className="absolute inset-0 bg-gold pointer-events-none"
+                  className="absolute inset-0 bg-white pointer-events-none"
                   initial={{ opacity: 0.45 }}
                   animate={{ opacity: 0 }}
                   exit={{ opacity: 0 }}
@@ -334,7 +334,7 @@ export function CameraCapture({
               <button
                 onClick={onCancel}
                 aria-label="閉じる"
-                className="h-10 w-10 rounded-full bg-white/10 backdrop-blur flex items-center justify-center active:scale-95 transition-transform"
+                className="h-10 w-10 rounded-full glass-dark flex items-center justify-center active:scale-95 transition-transform"
               >
                 <CloseIcon size={20} />
               </button>
@@ -349,7 +349,7 @@ export function CameraCapture({
                 <button
                   onClick={onFinish}
                   disabled={!canFinish}
-                  className="rounded-full bg-gold text-black text-sm font-semibold px-4 py-2 active:scale-95 transition-transform disabled:opacity-40"
+                  className="rounded-full bg-gold text-black text-sm font-semibold px-4 py-2 shadow-gold active:scale-95 transition-transform disabled:opacity-40"
                 >
                   完了
                 </button>
@@ -362,13 +362,21 @@ export function CameraCapture({
             <div className="absolute bottom-0 inset-x-0 pb-safe pb-10 flex flex-col items-center gap-4 bg-gradient-to-t from-black/65 to-transparent pt-16 pointer-events-none">
               <div className="relative h-16 w-16">
                 <svg viewBox="0 0 64 64" className="h-16 w-16 -rotate-90">
+                  <defs>
+                    <linearGradient id="irisRing" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#F2A900" />
+                      <stop offset="40%" stopColor="#FF6B9D" />
+                      <stop offset="75%" stopColor="#7C6FFF" />
+                      <stop offset="100%" stopColor="#4ED0C1" />
+                    </linearGradient>
+                  </defs>
                   <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="4" />
                   <circle
                     cx="32"
                     cy="32"
                     r="28"
                     fill="none"
-                    stroke="#F2A900"
+                    stroke="url(#irisRing)"
                     strokeWidth="4"
                     strokeLinecap="round"
                     strokeDasharray={2 * Math.PI * 28}
@@ -388,7 +396,7 @@ export function CameraCapture({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   className={`text-sm font-medium px-4 py-2 rounded-full backdrop-blur ${
-                    locked ? "bg-gold/90 text-black" : "bg-white/10 text-white/85"
+                    locked ? "bg-gold/90 text-black" : "glass-dark text-white/90"
                   }`}
                 >
                   {guidance(scanState, cameraReady)}

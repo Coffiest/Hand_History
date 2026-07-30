@@ -1,24 +1,32 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Design tokens carried over from the RRPoker hand-review screen and the
- * project CLAUDE.md rules: Apple-native, warm off-white base, grey text
- * hierarchy, gold (#F2A900) as the single accent, generous rounding.
- * Suit colours use the 4-colour deck (spade black / heart red / diamond blue /
- * club green) matching Meta-GEO's PlayingCard.
+ * "White Cube" design tokens — v0.7.0 redesign.
+ *
+ * The app is a white gallery: pure-white canvas, faint cool-grey section walls,
+ * hairline separations, and liquid-glass surfaces floating above. Gold stays
+ * the single solid accent; the iridescent gradient lives only in glass edges,
+ * progress strokes and hero light (never as a fill).
+ *
+ * Existing token NAMES are kept (bg/surface/border/ink/gray2/gray3/gold/suit)
+ * so every component keeps compiling; their VALUES define the new look.
  */
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        bg: "#FFFBF5",
-        surface: "#F5F3EF",
-        border: "#E8E3DB",
-        gold: { DEFAULT: "#F2A900", dark: "#D4910A" },
-        ink: "#1D1D1F",
+        // White Cube base
+        bg: "#FFFFFF",
+        canvas: "#FFFFFF",
+        surface: "#F7F7F8",
+        gallery: "#F7F7F8",
+        border: "rgba(10, 10, 12, 0.08)",
+        hairline: "rgba(10, 10, 12, 0.08)",
+        ink: "#0A0A0C",
         gray2: "#6E6E73",
         gray3: "#AEAEB2",
+        gold: { DEFAULT: "#F2A900", dark: "#D4910A" },
         suit: {
           spade: "#1D1D1F",
           heart: "#E53E3A",
@@ -43,8 +51,18 @@ const config: Config = {
         "4xl": "2rem",
       },
       boxShadow: {
-        card: "0 2px 12px rgba(0, 0, 0, 0.06)",
-        lift: "0 8px 30px rgba(0, 0, 0, 0.10)",
+        // Gallery elevation scale: broad, faint, diffuse — glass floating on air.
+        card: "0 2px 12px rgba(10, 10, 12, 0.05)",
+        lift: "0 8px 32px rgba(10, 10, 12, 0.08)",
+        glass:
+          "0 8px 32px rgba(10, 10, 12, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9)",
+        "glass-strong":
+          "0 16px 48px rgba(10, 10, 12, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.95)",
+        gold: "0 6px 24px rgba(242, 169, 0, 0.35)",
+      },
+      transitionTimingFunction: {
+        // The one easing used app-wide for enters (expo-out).
+        gallery: "cubic-bezier(0.16, 1, 0.3, 1)",
       },
     },
   },
