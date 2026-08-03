@@ -38,6 +38,26 @@ SOURCE_CARD_H = 448
 # Corner radius of a real card, as a fraction of its short side.
 CORNER_RADIUS_FRAC = 0.055
 
+# Background plates are only ever the bed of a 256x192 scene, and `Plate.sample`
+# crops them and scales down again, so there is nothing to gain from keeping
+# them at photo resolution — and a great deal to lose. Inpainting a 12MP phone
+# photo takes 50 seconds; at 768px with a small radius it takes 0.12s, which is
+# the difference between extracting a 836-photo dataset in eleven hours and in
+# ten minutes.
+PLATE_MAX_SIDE = 768
+INPAINT_RADIUS = 3
+
+# A photo where the card fills most of the frame leaves almost no real table
+# behind it, so its "background" would be mostly inpainting smear — and a scene
+# built on that teaches the segmenter that smear is what tables look like. Such
+# photos still contribute their card; they just don't contribute a background.
+MAX_PLATE_HOLE_FRAC = 0.55
+
+# Photos are also bounded before detection and warping. The detector downscales
+# to 1024 internally and cards are emitted at 320x448, so nothing above this
+# resolution reaches the output.
+PHOTO_MAX_SIDE = 2000
+
 CARD_ASPECT = 2.5 / 3.5
 
 # Label ids for the segmentation target.
@@ -110,11 +130,14 @@ def _splitter():
     return v2
 
 
-def extract_card_and_plate(photo: np.ndarray) -> tuple[np.ndarray, "Plate"] | None:
+def extract_card_and_plate(photo: np.ndarray
+                           ) -> tuple[np.ndarray, "Plate | None"] | None:
     """Split a single-card photo into (flattened card, table with card removed).
 
     Returns None when the detector doesn't find exactly one convincing card, so
-    a bad source photo drops out of the dataset instead of poisoning it.
+    a bad source photo drops out of the dataset instead of poisoning it. The
+    plate alone can be None when the card covers too much of the frame to leave
+    a usable background — the card is still worth keeping in that case.
     """
     v2 = _splitter()
     quads = v2.detect_cards_classic(photo, max_cards=2)
@@ -125,17 +148,30 @@ def extract_card_and_plate(photo: np.ndarray) -> tuple[np.ndarray, "Plate"] | No
     if long <= 0 or not (0.55 <= short / long <= 0.92):
         return None
 
+    # The card is warped from the photo at full resolution: it is what the
+    # segmenter learns card printing from, so its sharpness matters.
     card = v2.warp_card(photo, quad, (SOURCE_CARD_W, SOURCE_CARD_H))
 
     # Paint the card out of the photo so what remains is pure table. The mask is
     # dilated well past the card so the drop shadow goes with it — a shadow left
     # behind would be baked into every scene built on this plate.
+    #
+    # Downscale first. Inpainting cost grows with the masked area, and the plate
+    # is only ever a scene backdrop, so doing this at photo resolution burns
+    # ~50s per 12MP photo for a result that gets scaled down to 256x192 anyway.
     h, w = photo.shape[:2]
-    mask = np.zeros((h, w), np.uint8)
-    grown = v2.expand_quad(quad.corners, ratio=0.22)
-    cv2.fillConvexPoly(mask, grown.astype(np.int32), 255)
-    plate = cv2.inpaint(photo, mask, 9, cv2.INPAINT_TELEA)
+    scale = min(1.0, PLATE_MAX_SIDE / max(h, w))
+    small = (cv2.resize(photo, (max(1, int(w * scale)), max(1, int(h * scale))),
+                        interpolation=cv2.INTER_AREA) if scale < 1.0 else photo)
 
+    mask = np.zeros(small.shape[:2], np.uint8)
+    grown = v2.expand_quad(quad.corners, ratio=0.22) * scale
+    cv2.fillConvexPoly(mask, grown.astype(np.int32), 255)
+
+    if float(mask.mean()) / 255.0 > MAX_PLATE_HOLE_FRAC:
+        return card, None            # good card, unusable background
+
+    plate = cv2.inpaint(small, mask, INPAINT_RADIUS, cv2.INPAINT_TELEA)
     return card, Plate(image=plate, hole=mask)
 
 
@@ -179,25 +215,64 @@ class Plate:
 
 
 def load_sources(photo_paths: Iterable[Path], *, limit: int | None = None,
+                 max_plates: int | None = 150,
                  progress: bool = True) -> tuple[list[np.ndarray], list[Plate]]:
-    """Build the card and background-plate pools from single-card photos."""
+    """Build the card and background-plate pools from single-card photos.
+
+    ``max_plates`` caps the background pool. Every card is kept — each one is a
+    distinct rank and suit the segmenter should see — but the backgrounds are
+    the same few tables photographed over and over, so keeping one per photo
+    buys almost no variety while costing the most memory of anything here.
+    Plates are sampled evenly across the set rather than taken from the front,
+    so whatever variety does exist is preserved.
+    """
+    import time
+
     cards: list[np.ndarray] = []
     plates: list[Plate] = []
     paths = list(photo_paths)
     if limit is not None:
         paths = paths[:limit]
+
+    # Consider every stride-th photo for a background, so the ones we keep are
+    # spread across the whole set rather than taken from the front.
+    stride = (1 if max_plates is None or max_plates >= len(paths)
+              else max(1, len(paths) // max_plates))
+
+    started = time.time()
     for i, p in enumerate(paths):
         img = cv2.imread(str(p))
         if img is None:
             continue
+
+        # Bound the work: a 12MP photo carries far more detail than a 320x448
+        # card crop or a 768px plate can use.
+        h, w = img.shape[:2]
+        if max(h, w) > PHOTO_MAX_SIDE:
+            s = PHOTO_MAX_SIDE / max(h, w)
+            img = cv2.resize(img, (int(w * s), int(h * s)),
+                             interpolation=cv2.INTER_AREA)
+
         got = extract_card_and_plate(img)
         if got is None:
             continue
         card, plate = got
         cards.append(card)
-        plates.append(plate)
+        if (plate is not None and i % stride == 0
+                and (max_plates is None or len(plates) < max_plates)):
+            plates.append(plate)
+
         if progress and (i + 1) % 25 == 0:
-            print(f"  {i + 1}/{len(paths)} photos -> {len(cards)} cards")
+            done = i + 1
+            elapsed = time.time() - started
+            eta = elapsed / done * (len(paths) - done)
+            print(f"  {done}/{len(paths)} 枚  "
+                  f"→ カード{len(cards)} / 背景{len(plates)}  "
+                  f"経過{elapsed / 60:.1f}分 残り約{eta / 60:.1f}分", flush=True)
+
+    if progress:
+        print(f"  完了: {len(paths)} 枚を {(time.time() - started) / 60:.1f} 分で処理",
+              flush=True)
     return cards, plates
 
 

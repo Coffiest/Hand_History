@@ -59,18 +59,19 @@ def build() -> None:
         md("""
 # トランプ分割モデルの学習（Colab / CPU可）
 
-このノートブックは、Google Drive にある**実写真363枚**（1枚に1カード）から
+このノートブックは、Google Drive にある**実写真**（1枚に1カード）から
 学習データを自動生成し、カードの**重なりを分離できる**セグメンテーションモデルを学習します。
 
 **やること（上から順にセルを実行するだけ）**
 
 1. Drive をマウント
 2. 学習プログラムを書き出す
-3. 写真からカードと背景を取り出す
-4. 重なり込みの合成シーンを作る
-5. 学習する（GPUが無くても動きます）
-6. 精度を確認する
-7. 重みファイルを Drive に保存する
+3. 写真をローカルディスクへコピー
+4. 写真からカードと背景を取り出す
+5. 重なり込みの合成シーンを作る
+6. 学習する（GPUが無くても動きます）
+7. 精度を確認する
+8. 重みファイルを Drive に保存する
 
 最後に出力される `card_seg_unet.pt` を、リポジトリの
 `services/recognition/models/` に置いてデプロイしてください。
@@ -86,27 +87,56 @@ def build() -> None:
         md("## 2. 学習プログラムを書き出す"),
         module_cell(),
         md("""
-## 3. 写真からカードと背景を取り出す
+## 3. 写真をローカルディスクへコピー
+
+Drive はネットワーク越しのマウントなので、何百枚もの写真を1枚ずつ読むと非常に遅くなります。
+先に `/content`（Colabのローカルディスク）へ一括コピーしておくと、以降の読み込みが速くなります。
+
+`DRIVE_PHOTO_DIR` が実際の場所と違う場合はここを書き換えてください。
+"""),
+        code(
+            "DRIVE_PHOTO_DIR = '/content/drive/MyDrive/data_set_pre/jpg'\n"
+            "LOCAL_PHOTO_DIR = '/content/photos'\n"
+            "\n"
+            "import os, shutil, time, pathlib\n"
+            "\n"
+            "if not os.path.isdir(LOCAL_PHOTO_DIR):\n"
+            "    assert os.path.isdir(DRIVE_PHOTO_DIR), \\\n"
+            "        f'Driveにフォルダが見つかりません: {DRIVE_PHOTO_DIR}'\n"
+            "    t0 = time.time()\n"
+            "    shutil.copytree(DRIVE_PHOTO_DIR, LOCAL_PHOTO_DIR)\n"
+            "    print(f'コピー完了 ({time.time() - t0:.0f}秒)')\n"
+            "else:\n"
+            "    print('コピー済みなのでスキップします')\n"
+            "\n"
+            "EXTS = {'.jpg', '.jpeg', '.png', '.bmp'}\n"
+            "paths = sorted(p for p in pathlib.Path(LOCAL_PHOTO_DIR).rglob('*')\n"
+            "               if p.suffix.lower() in EXTS)\n"
+            "print(f'写真: {len(paths)} 枚')\n"
+            "assert paths, '画像が見つかりません'\n"
+        ),
+        md("""
+## 4. 写真からカードと背景を取り出す
 
 各写真から「平らに直したカード」と「カードを消したテーブル」を取り出します。
 1枚だけ写っている写真は検出が確実なので、ここは自動で通ります。
 うまく検出できなかった写真は自動的に除外されます。
 
-`PHOTO_DIR` が違う場合はここを書き換えてください。
+**目安: 1枚あたり0.5〜1秒**（800枚で10〜15分）。進捗と残り時間が表示されます。
+
+- `MAX_PHOTOS`: 使う写真の枚数の上限。時間がない場合は 400 程度に下げても学習できます
+- `MAX_PLATES`: 背景の枚数の上限。背景は同じ机が何度も写るだけで冗長な上にメモリを食うので、
+  カードは全部使いつつ背景だけ間引きます。ここは増やさなくて構いません
 """),
         code(
-            "PHOTO_DIR = '/content/drive/MyDrive/data_set_pre/jpg'\n"
-            "\n"
-            "import pathlib, cv2, numpy as np\n"
+            "import cv2, numpy as np\n"
             "import card_synth as cs\n"
             "\n"
-            "EXTS = {'.jpg', '.jpeg', '.png', '.bmp'}\n"
-            "paths = sorted(p for p in pathlib.Path(PHOTO_DIR).rglob('*')\n"
-            "               if p.suffix.lower() in EXTS)\n"
-            "print(f'写真: {len(paths)} 枚')\n"
-            "assert paths, f'画像が見つかりません: {PHOTO_DIR}'\n"
+            "MAX_PHOTOS = None   # 全部使う。急ぐときは 400 などにする\n"
+            "MAX_PLATES = 150\n"
             "\n"
-            "cards, plates = cs.load_sources(paths)\n"
+            "cards, plates = cs.load_sources(paths, limit=MAX_PHOTOS,\n"
+            "                                max_plates=MAX_PLATES)\n"
             "print(f'\\n取り出せたカード: {len(cards)} 枚 / 背景: {len(plates)} 枚')\n"
             "assert cards and plates, 'カードを取り出せませんでした。PHOTO_DIR を確認してください。'\n"
             "\n"
@@ -138,7 +168,7 @@ def build() -> None:
             "plt.tight_layout(); plt.show()\n"
         ),
         md("""
-## 4. 合成シーンを作る
+## 5. 合成シーンを作る
 
 カードを2〜5枚、ランダムに回転・遠近・**重なり**・光沢・影を付けて背景に配置します。
 自分で配置しているので、正解は画素単位で完全に正確です。
@@ -146,7 +176,7 @@ def build() -> None:
         code(
             "from tiny_unet import INPUT_W, INPUT_H\n"
             "\n"
-            "N_TRAIN = 3000   # CPUで重い場合は 1500 程度に下げてください\n"
+            "N_TRAIN = 3000   # CPUのみなら 1200 に下げてください\n"
             "N_VAL = 300\n"
             "\n"
             "import time\n"
@@ -178,10 +208,20 @@ def build() -> None:
             "plt.tight_layout(); plt.show()\n"
         ),
         md("""
-## 5. 学習
+## 6. 学習
 
 GPUがあれば自動で使います。無い場合もCPUで動くようにモデルを小さく設計してあります
-（約39万パラメータ）。時間がかかる場合は上の `N_TRAIN` と下の `EPOCHS` を下げてください。
+（約39万パラメータ）。
+
+**必ず「ランタイム」→「ランタイムのタイプを変更」で T4 GPU を確認してください。**
+
+| | GPUあり | CPUのみ |
+|---|---|---|
+| `N_TRAIN`（前のセル） | 3000 | **1200** に下げる |
+| `EPOCHS`（下） | 28 | **14** に下げる |
+| 目安 | 約20分 | 約1時間 |
+
+CPUのまま 3000×28 で回すと数時間かかり、Colabの接続が先に切れます。
 """),
         code(
             "import torch, torch.nn.functional as F, random\n"
@@ -230,7 +270,7 @@ GPUがあれば自動で使います。無い場合もCPUで動くようにモ�
             "print(f'\\n完了。ベスト mIoU = {best:.3f}')\n"
         ),
         md("""
-## 6. 精度を確認する
+## 7. 精度を確認する
 
 **枚数がぴったり合った割合**と**1枚ごとの検出率**を、重なりの有無で分けて出します。
 古典的手法（学習なし）と並べて比べられます。
@@ -243,7 +283,7 @@ GPUがあれば自動で使います。無い場合もCPUで動くようにモ�
             "card_seg_eval.report(cards_test, plates_test, '/content/card_seg_unet.pt')\n"
         ),
         md("""
-## 7. 重みを Drive に保存
+## 8. 重みを Drive に保存
 
 保存したら Drive からダウンロードして、リポジトリの
 `services/recognition/models/card_seg_unet.pt` に置いてください。
