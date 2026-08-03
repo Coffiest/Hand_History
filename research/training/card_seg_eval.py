@@ -82,11 +82,36 @@ def score(bench: dict, detect) -> dict[str, dict[str, float]]:
     return out
 
 
+def _engines():
+    """Import both engines, whether standing alone or inside the repo package.
+
+    On Colab the notebook drops every module into one directory, so a plain
+    import finds them. In the repo they live inside the recognition service's
+    package, which a plain import cannot reach — and this module is useful from
+    there too, for checking a downloaded model before it ships.
+    """
+    try:
+        import card_seg_model  # type: ignore
+        import card_splitter_v2 as v2  # type: ignore
+        return card_seg_model, v2
+    except ImportError:
+        pass
+
+    import sys
+    from pathlib import Path
+
+    service = Path(__file__).resolve().parents[2] / "services" / "recognition"
+    if str(service) not in sys.path:
+        sys.path.insert(0, str(service))
+    from app.recognition import card_seg_model  # type: ignore
+    from app.recognition import card_splitter_v2 as v2  # type: ignore
+    return card_seg_model, v2
+
+
 def report(cards: Sequence[np.ndarray], plates: Sequence[cs.Plate],
            weights_path: str, per_mode: int = 30) -> dict:
     """Print a side-by-side comparison and return the raw numbers."""
-    import card_seg_model  # type: ignore
-    import card_splitter_v2 as v2  # type: ignore
+    card_seg_model, v2 = _engines()
 
     print(f"ベンチマークを作成中（各レイアウト {per_mode} シーン）...")
     bench = build_benchmark(cards, plates, per_mode=per_mode)

@@ -151,3 +151,31 @@ def test_end_to_end_reads_the_five_card_photo() -> None:
     cards, _ = recognize_image(path.read_bytes())
     assert [c["card_code"] for c in cards] == ["3s", "4s", "5s", "6s", "7s"]
     assert all(c["accepted"] for c in cards)
+
+
+def test_classic_confidence_gate_accepts_a_clean_read() -> None:
+    """The gate that decides whether the learned model is worth consulting."""
+    quads = v2.detect_cards_classic(_load(PHOTOS[0][0]))
+    assert v2.classic_is_confident(quads)
+
+
+def test_classic_confidence_gate_rejects_a_bad_read() -> None:
+    """Nothing found, wrong proportions, or sizes that disagree — all suspect."""
+    assert not v2.classic_is_confident([])
+
+    square = v2.CardQuad(
+        corners=np.array([[0, 0], [100, 0], [100, 100], [0, 100]], np.float32),
+        aspect=1.0, score=0.9)
+    assert not v2.classic_is_confident([square])
+
+    def card(size: float) -> v2.CardQuad:
+        q = v2.CardQuad(corners=np.array(
+            [[0, 0], [size, 0], [size, size / v2.CARD_ASPECT],
+             [0, size / v2.CARD_ASPECT]], np.float32), score=0.8)
+        short, long = q.dims()
+        q.aspect = short / long
+        return q
+
+    assert v2.classic_is_confident([card(100), card(110)])
+    # One card twice the area of another cannot be the same photo.
+    assert not v2.classic_is_confident([card(100), card(200)])
