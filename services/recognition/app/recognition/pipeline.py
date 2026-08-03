@@ -129,35 +129,57 @@ def _png_uri(image: np.ndarray) -> str | None:
     return "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-def _splitter_debug(bgr: np.ndarray, selected: list[dict], mask: np.ndarray) -> dict[str, Any]:
-    """The pictures card_splitter_first.py's process_image writes to disk.
+def _splitter_debug(bgr: np.ndarray, quads: list[Any],
+                    detect_debug: dict[str, Any]) -> dict[str, Any]:
+    """The pictures the splitter would have written to disk, returned inline.
 
-    Same three artefacts — the source frame, the detection overlay and the edge
-    mask the contours came from — returned inline instead of saved, so the split
-    step can be inspected from the app.
+    Same three artefacts as the original research script — the source frame, the
+    detection overlay and the mask the outlines came from — plus which engine ran
+    and, when the learned one did, why it did or didn't.
     """
     annotated = bgr.copy()
-    for i, card in enumerate(selected):
-        box = card["box"].astype(np.int32)
-        cv2.drawContours(annotated, [box], 0, (0, 255, 0), 3)
+    for i, card in enumerate(quads):
+        box = card.corners.astype(np.int32)
+        colour = (0, 165, 255) if card.occluded else (0, 255, 0)
+        cv2.drawContours(annotated, [box], 0, colour, 3)
         x, y, _, _ = cv2.boundingRect(box)
         cv2.putText(annotated, f"card_{i + 1}", (x, max(y - 10, 20)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
+    # One mask picture: the union of the classical hypotheses, or the learned
+    # label map rendered as background / interior / border.
+    mask: np.ndarray | None = None
+    masks = detect_debug.get("masks")
+    if masks:
+        for m in masks.values():
+            mask = m if mask is None else cv2.bitwise_or(mask, m)
+    else:
+        label = detect_debug.get("label_map")
+        if label is not None:
+            mask = (label.astype(np.uint16) * 120).clip(0, 255).astype(np.uint8)
+
     return {
         "original": _png_uri(bgr),
         "annotated": _png_uri(annotated),
-        "mask": _png_uri(mask),
-        "detected_count": len(selected),
+        "mask": _png_uri(mask) if mask is not None else None,
+        "detected_count": len(quads),
+        "engine": detect_debug.get("engine", "classic"),
+        "fallback": detect_debug.get("fallback"),
         "candidates": [
             {
                 "index": i,
-                "area": round(float(c["area"]), 1),
-                "aspect_ratio": round(float(c["aspect_ratio"]), 3),
-                "extent": round(float(c["extent"]), 3),
-                "vertices": int(c["vertices"]),
+                "area": round(float(c.area), 1),
+                "aspect_ratio": round(float(c.aspect), 3),
+                "extent": round(float(c.extent), 3),
+                # Kept for the existing debug view. The rewritten detector scores
+                # candidates on edge evidence rather than counting polygon
+                # vertices, so this reports that score instead.
+                "vertices": int(round(c.edge_support * 100)),
+                "score": round(float(c.score), 3),
+                "occluded": bool(c.occluded),
+                "sources": sorted(c.sources),
             }
-            for i, c in enumerate(selected)
+            for i, c in enumerate(quads)
         ],
     }
 
@@ -175,17 +197,26 @@ def recognize_image(
 
     Returns (cards in reading order, splitter debug or None).
     """
-    from .card_splitter import detect_card_regions, warp_card
+    from . import card_splitter_v2 as splitter
 
     array = np.frombuffer(image_bytes, dtype=np.uint8)
     bgr = cv2.imdecode(array, cv2.IMREAD_COLOR)
     if bgr is None:
         raise ValueError("Could not decode the uploaded image")
 
-    selected, mask = detect_card_regions(bgr, num_cards=expected_count)
-    scene_debug = _splitter_debug(bgr, selected, mask) if debug else None
+    detect_debug: dict[str, Any] = {}
+    quads = splitter.detect_cards(
+        bgr,
+        engine=os.environ.get("CARD_SPLIT_ENGINE", "auto"),
+        max_cards=expected_count or splitter.MAX_CARDS,
+        debug=detect_debug,
+    )
+    scene_debug = _splitter_debug(bgr, quads, detect_debug) if debug else None
 
-    crops = [warp_card(bgr, card["box"]) for card in selected]
+    # 600x900 matches the rank pipeline's own normalisation size; cropping
+    # straight to it keeps the glyphs at the resolution that model was trained on.
+    crops = [splitter.warp_card(bgr, q, (splitter.CARD_W, splitter.CARD_H))
+             for q in quads]
     if not crops:
         return [], scene_debug
 
@@ -210,6 +241,11 @@ def detect_boxes(image_bytes: bytes) -> list[dict[str, Any]]:
     draw a frame over each card it currently sees. Quads are returned in the
     ORIGINAL image's pixel coordinates, normalised to 0..1 so the client can map
     them onto the video element regardless of resolution.
+
+    Deliberately still on the original lightweight detector: this endpoint is
+    polled every 220ms and only needs a card count and rough outlines to drive
+    the stillness check, so it is not worth the accuracy engine's latency. The
+    accurate split runs once, in ``recognize_image``, after the shutter fires.
     """
     from .card_splitter import detect_card_regions
 
