@@ -953,6 +953,28 @@ def warp_card(image: np.ndarray, quad: np.ndarray | CardQuad,
     return cv2.resize(warped, output_size, interpolation=interp)
 
 
+def classic_is_confident(quads: list[CardQuad]) -> bool:
+    """Whether the classical result looks like a clean read of the scene.
+
+    Confident means: it found something, every quad is close to a card's true
+    proportions, they agree on a size, and they scored well. Cards laid out with
+    gaps produce exactly that; cards that overlap do not, because the geometry
+    the classical engine relies on isn't there.
+    """
+    if not quads:
+        return False
+    for q in quads:
+        if not (0.62 <= q.aspect <= 0.82):
+            return False
+        if q.score < 0.55:
+            return False
+    if len(quads) > 1:
+        areas = sorted(q.area for q in quads)
+        if areas[0] <= 0 or areas[-1] / areas[0] > 1.5:
+            return False
+    return True
+
+
 def detect_cards(image: np.ndarray, *, engine: str = "auto",
                  max_cards: int = MAX_CARDS,
                  debug: dict[str, Any] | None = None) -> list[CardQuad]:
@@ -961,10 +983,21 @@ def detect_cards(image: np.ndarray, *, engine: str = "auto",
     ``engine``:
       ``classic``  geometry only, no weights.
       ``learned``  the trained segmentation model (raises if unavailable).
-      ``auto``     learned when its weights are present, else classic; and
-                   classic as a fallback whenever learned finds nothing, so a
-                   missing or mis-firing model degrades instead of returning
-                   an empty result.
+      ``auto``     classical first, and the learned model only to rescue the
+                   scenes the classical engine cannot do.
+
+    Why ``auto`` runs the classical engine first rather than preferring the
+    model: measured on held-out synthetic scenes, the learned engine is far
+    better where geometry fails — overlapping cards go from 16% to 48% recall,
+    a fanned hand from 1% to 46% — but it is *worse* on cards laid out with
+    gaps, which the classical engine already reads at ~90%. Always preferring
+    the model would trade away the common case to win the rare one. So the
+    classical answer is taken whenever it looks clean (see
+    ``classic_is_confident``), and the model is consulted only when it doesn't.
+
+    That ordering also keeps the usual request on the fast path: the classical
+    engine alone is well inside the latency budget, and the model's cost is
+    only paid for the frames that need it.
     """
     if engine == "classic":
         return detect_cards_classic(image, max_cards=max_cards, debug=debug)
@@ -978,21 +1011,39 @@ def detect_cards(image: np.ndarray, *, engine: str = "auto",
     if engine != "auto":
         raise ValueError(f"unknown engine: {engine!r}")
 
-    if card_seg_model.weights_available():
-        try:
-            found = card_seg_model.detect_cards_learned(
-                image, max_cards=max_cards, debug=debug)
-            if found:
-                return found
-            if debug is not None:
-                debug["fallback"] = "learned found nothing"
-        except Exception as exc:  # noqa: BLE001 - never break on a bad model
-            if debug is not None:
-                debug["fallback"] = f"learned failed: {exc}"
-    elif debug is not None:
-        debug["fallback"] = "no weights"
+    classic = detect_cards_classic(image, max_cards=max_cards, debug=debug)
 
-    return detect_cards_classic(image, max_cards=max_cards, debug=debug)
+    if not card_seg_model.weights_available():
+        if debug is not None:
+            debug["engine"] = "classic"
+            debug["fallback"] = "no weights"
+        return classic
+
+    if classic_is_confident(classic):
+        if debug is not None:
+            debug["engine"] = "classic"
+            debug["fallback"] = "classic confident"
+        return classic
+
+    try:
+        learned = card_seg_model.detect_cards_learned(
+            image, max_cards=max_cards, debug=debug)
+    except Exception as exc:  # noqa: BLE001 - never break on a bad model
+        if debug is not None:
+            debug["engine"] = "classic"
+            debug["fallback"] = f"learned failed: {exc}"
+        return classic
+
+    if not learned:
+        if debug is not None:
+            debug["engine"] = "classic"
+            debug["fallback"] = "learned found nothing"
+        return classic
+
+    if debug is not None:
+        debug["engine"] = "learned"
+        debug["fallback"] = "classic not confident"
+    return learned
 
 
 def split_cards(image: np.ndarray, *, engine: str = "auto",

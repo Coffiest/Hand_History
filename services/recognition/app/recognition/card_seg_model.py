@@ -3,8 +3,8 @@
 The classical detector in ``card_splitter_v2`` reaches its ceiling when cards
 overlap: a card that is partly hidden has no closed outline to trace, and its
 visible part is an L-shape that no rectangle filter accepts. Measured on
-synthetic scenes it recovers 97% of well-separated cards but only ~5% of
-overlapping ones.
+synthetic scenes built from held-out source photos, it recovers ~90% of
+well-separated cards, ~51% of touching ones, and ~16% of overlapping ones.
 
 This module fills that gap with a small U-Net (see
 ``research/training/tiny_unet.py``) that predicts three classes per pixel —
@@ -22,6 +22,13 @@ has to change to gain overlap support.
 
 The weights are optional. If the file is missing the service runs the classical
 engine instead, so a checkout without the model still works.
+
+The model is a *rescue*, not a replacement — ``detect_cards(engine="auto")``
+takes the classical answer whenever it looks clean and only consults this
+module otherwise. A model trained on too little source material beats geometry
+on overlap while losing ground on the easy separated case, and the easy case is
+the common one. ``research/training/card_seg_eval.py`` prints that comparison on
+held-out material; check it before shipping a new set of weights.
 """
 
 from __future__ import annotations
