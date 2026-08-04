@@ -39,7 +39,26 @@ class CardResult:
     card_code: str            # e.g. "13h" (asset name) or "?h" when rank unknown
     rank_confidence: float | None
     suit_confidence: float
+    suit_margin: float        # how far the read suit leads the runner-up
     accepted: bool            # both models confident enough to auto-accept
+
+
+# A suit read has to clear both bars to be recorded without asking. The margin
+# does the real work — spades and clubs split the model's mass when it is unsure,
+# so a wrong answer can hold a decent top probability while its runner-up sits
+# right behind it. The floor is there for the rest: a leader under this is a coin
+# toss whatever the gap.
+#
+# Calibrated against the sample photos: the one genuine misread had a margin of
+# 0.11 and a near-coin-toss ace had 0.32, while every other card cleared 0.5.
+SUIT_MIN_MARGIN = 0.35
+SUIT_MIN_CONFIDENCE = 0.55
+
+
+def suit_is_confident(suit_result: Any) -> bool:
+    """Whether a suit read is decisive enough to record without confirmation."""
+    return (suit_result.margin >= SUIT_MIN_MARGIN
+            and suit_result.confidence >= SUIT_MIN_CONFIDENCE)
 
 
 def _ensure_models() -> None:
@@ -77,7 +96,8 @@ def _recognize_one(args: tuple[int, bytes, bool]) -> dict[str, Any]:
         tmp_path.unlink(missing_ok=True)
 
     rank_label = rank_to_display(rank_result.rank)
-    accepted = rank_result.accepted and rank_result.rank is not None
+    accepted = (rank_result.accepted and rank_result.rank is not None
+                and suit_is_confident(suit_result))
     rank_code = str(rank_result.rank) if rank_result.rank is not None else "?"
 
     payload = asdict(CardResult(
@@ -88,6 +108,7 @@ def _recognize_one(args: tuple[int, bytes, bool]) -> dict[str, Any]:
         card_code=f"{rank_code}{suit_result.code}",
         rank_confidence=rank_result.confidence,
         suit_confidence=suit_result.confidence,
+        suit_margin=suit_result.margin,
         accepted=accepted,
     ))
 
