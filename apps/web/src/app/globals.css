@@ -65,6 +65,19 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
+/* ── Chrome bar ───────────────────────────────────────────────────────────
+   The one surface used by the top bar and the bottom tab bar. Deliberately
+   NOT `.glass`: chrome is anchored to a screen edge, so it needs no floating
+   shadow, and a shadow plus a hairline reads as two separators stacked on
+   each other. Opaque enough (0.9) that scrolling content is muted rather
+   than showing through, and the separating hairline is applied at the call
+   site (`border-b` / `border-t`) so each bar draws exactly one line. */
+.chrome-bar {
+  background: rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+}
+
 /* Dark glass for pills/controls layered over the live camera. */
 .glass-dark {
   background: rgba(20, 20, 24, 0.55);

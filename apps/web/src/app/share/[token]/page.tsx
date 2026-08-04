@@ -46,7 +46,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   return (
     <div className="min-h-dvh bg-bg relative overflow-hidden">
       <div className="iris-bloom h-72 w-72 -top-20 -right-16" aria-hidden="true" />
-      <header className="glass relative" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
+      <header className="chrome-bar border-b border-hairline relative">
         <div className="max-w-lg mx-auto px-5 py-4 text-center">
           <h1 className="text-base font-semibold text-ink">Hand History</h1>
           <p className="text-xs text-gray3">共有されたハンド</p>

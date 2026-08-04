@@ -133,7 +133,7 @@ export default function NewHandPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <header className="sticky top-0 z-10 glass" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
+      <header className="sticky top-0 z-10 chrome-bar border-b border-hairline">
         <div className="max-w-lg mx-auto px-5 py-4 flex items-center justify-between">
           <button onClick={() => router.back()} className="flex items-center gap-1 text-sm text-gray2 active:scale-95 transition-transform">
             <ChevronLeftIcon size={18} /> 戻る
