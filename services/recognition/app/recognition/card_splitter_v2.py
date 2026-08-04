@@ -987,17 +987,22 @@ def detect_cards(image: np.ndarray, *, engine: str = "auto",
                    scenes the classical engine cannot do.
 
     Why ``auto`` runs the classical engine first rather than preferring the
-    model: measured on held-out synthetic scenes, the learned engine is far
-    better where geometry fails — overlapping cards go from 16% to 48% recall,
-    a fanned hand from 1% to 46% — but it is *worse* on cards laid out with
-    gaps, which the classical engine already reads at ~90%. Always preferring
-    the model would trade away the common case to win the rare one. So the
-    classical answer is taken whenever it looks clean (see
-    ``classic_is_confident``), and the model is consulted only when it doesn't.
+    model: the network sees the frame at 256x192. Five cards spread across a
+    wide photo are about 40x58 pixels each with a ten-pixel gap between them,
+    and at that scale it cannot resolve the gaps — measured on a real five-card
+    photo, it merged three of them into a single component spanning the whole
+    frame. The classical engine works at 1024px and reads that photo exactly.
+    Conversely, overlapping and fanned cards have no closed outline for geometry
+    to trace, and there the model is the only thing that works at all (recall
+    11% -> 64% overlapping, 3% -> 51% fanned).
 
-    That ordering also keeps the usual request on the fast path: the classical
-    engine alone is well inside the latency budget, and the model's cost is
-    only paid for the frames that need it.
+    So each engine covers what the other cannot, and the classical answer is
+    taken whenever it looks clean (see ``classic_is_confident``), with the model
+    consulted only when it doesn't. That ordering also keeps the usual request
+    on the fast path: the model's cost is paid only for frames that need it.
+
+    Raising the network's input resolution is the change that would let the
+    model handle small-in-frame cards too; it needs retraining, not a flag.
     """
     if engine == "classic":
         return detect_cards_classic(image, max_cards=max_cards, debug=debug)

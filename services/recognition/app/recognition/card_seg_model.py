@@ -47,8 +47,10 @@ try:  # inside the service package
         MAX_CARDS,
         CardQuad,
         _aspect_score,
+        _enforce_size_consistency,
         _merge_duplicates,
         _refine_quad_edges,
+        _unit_card_area,
         order_points,
     )
 except ImportError:  # standing alone, e.g. next to the file on Colab
@@ -57,8 +59,10 @@ except ImportError:  # standing alone, e.g. next to the file on Colab
         MAX_CARDS,
         CardQuad,
         _aspect_score,
+        _enforce_size_consistency,
         _merge_duplicates,
         _refine_quad_edges,
+        _unit_card_area,
         order_points,
     )
 
@@ -85,6 +89,18 @@ STD = np.array([0.229, 0.224, 0.225], np.float32)
 
 LABEL_INTERIOR = 1
 LABEL_BORDER = 2
+
+# How much of a card completion may be invented. Completing a partial card to
+# the known 2.5:3.5 rectangle is the whole point of this module, but the same
+# arithmetic will happily turn a sliver into a card-shaped rectangle many times
+# its size — and because the completion *forces* the aspect ratio, the result
+# passes every aspect check while being nonsense.
+#
+# Seen for real: on a five-card photo the network merged three cards into one
+# component spanning the full frame, and completing it produced a quad with
+# nineteen times a card's area. Bounding the growth is the only check that
+# catches this, since the shape looks right by construction.
+MAX_COMPLETION_GROWTH = 4.0
 
 _model: Any = None
 _load_failed = False
@@ -201,6 +217,13 @@ def _complete_to_card(contour: np.ndarray,
     elif ratio > CARD_ASPECT * 1.10:
         new_long = short / CARD_ASPECT          # the long side was clipped
 
+    # Refuse a completion that invents far more than it saw. See
+    # MAX_COMPLETION_GROWTH: the forced aspect ratio makes such a quad look
+    # perfectly card-shaped, so growth is the only signal left.
+    seen = rw * rh
+    if seen <= 0 or (new_short * new_long) / seen > MAX_COMPLETION_GROWTH:
+        return None
+
     new_size = ((new_short, new_long) if rw <= rh else (new_long, new_short))
     centre = np.array([cx, cy], np.float32)
 
@@ -268,6 +291,11 @@ def detect_cards_learned(image: np.ndarray, *, max_cards: int = MAX_CARDS,
 
     quads = _merge_duplicates(quads, (h, w))
     quads = [q for q in quads if _aspect_score(q.aspect) > 0.25]
+
+    # Every card in one photo is the same object at roughly one distance — the
+    # same fact the classical engine leans on. Applying it here too drops the
+    # odd component that survived completion at the wrong scale.
+    quads = _enforce_size_consistency(quads, _unit_card_area(quads))
 
     # Snap onto real edges: the mask comes back at 256x192, so its outline is
     # several full-resolution pixels thick before this runs.

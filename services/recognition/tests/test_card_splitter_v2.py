@@ -122,17 +122,8 @@ def test_warp_card_returns_the_requested_size_upright() -> None:
     assert out.shape == (v2.CARD_H, v2.CARD_W, 3)
 
 
-def test_detect_cards_falls_back_to_classic_without_weights() -> None:
-    """A checkout with no model file must still detect, not return nothing."""
-    from app.recognition import card_seg_model
-
-    image = _load(PHOTOS[1][0])
-    debug: dict = {}
-    if card_seg_model.weights_available():
-        pytest.skip("weights present; fallback path not exercised")
-    quads = v2.detect_cards(image, engine="auto", debug=debug)
-    assert len(quads) == 2
-    assert debug.get("fallback") == "no weights"
+# The engine-selection and fallback paths are covered in test_card_seg_model.py,
+# which exercises them with and without the trained weights present.
 
 
 def test_end_to_end_reads_the_five_card_photo() -> None:

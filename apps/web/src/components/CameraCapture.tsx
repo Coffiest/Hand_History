@@ -2,48 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CameraIcon, CloseIcon } from "@/components/icons";
-import {
-  DEFAULT_SCAN_CONFIG,
-  evaluateScan,
-  pruneHistory,
-  shouldRearm,
-  type DetectFrame,
-  type ScanState,
-} from "@/lib/scanStability";
+import { CloseIcon } from "@/components/icons";
 
-// Auto-scanning camera, in the spirit of a QR reader: point it at the cards and
-// it fires by itself. It polls the fast /api/detect endpoint, tracks where the
-// cards are frame to frame, and captures a full-resolution JPEG the moment a
-// valid set of cards has held still (see lib/scanStability.ts for the rules).
+// Shutter camera. The user frames the cards and presses the button; the shot
+// goes to the recogniser at full resolution.
 //
-// There is deliberately no shutter button. If detection cannot get a lock for a
-// while — dim room, patterned felt — a manual capture button fades in as an
-// escape hatch. A file picker also stands in when getUserMedia is unavailable
-// (desktop / CI), so the whole flow stays testable without a real camera.
-
-type DetectedQuad = { index: number; quad: [number, number][] };
-
-const DETECT_INTERVAL_MS = 220; // detect costs ~5ms server-side; this is network-bound
-const DETECT_FRAME_MAX = 640; // downscale long edge for the detect poll
-const HISTORY_WINDOW_MS = 2000;
-const MANUAL_FALLBACK_AFTER_MS = 8000;
-
-function guidance(state: ScanState, cameraReady: boolean): string {
-  if (!cameraReady) return "カメラ起動中…";
-  switch (state.kind) {
-    case "idle":
-      return "カードをかざしてください";
-    case "invalidCount":
-      return state.count < 2
-        ? "カードを2枚、または3〜5枚写してください"
-        : `${state.count}枚は多すぎます`;
-    case "settling":
-      return "そのまま静止…";
-    case "ready":
-      return "読み取り中…";
-  }
-}
+// This replaced an auto-firing scanner that watched a fast detection endpoint
+// and captured by itself when the cards held still. It read well in testing and
+// badly in the room: the poll it depended on ran the older lightweight
+// detector, which is exactly the one that struggles with a white card on a pale
+// table, so in practice it often never fired at all while the same cards
+// recognised fine from a manual shot. Pressing a button always works, and the
+// accurate split runs once, on the frame the user chose.
+//
+// The camera stays mounted across the whole session, so accepting a result
+// returns to a live viewfinder rather than re-acquiring the stream. A file
+// picker stands in when getUserMedia is unavailable (desktop / CI), which also
+// keeps the flow testable without a real camera.
 
 export function CameraCapture({
   statusText,
@@ -56,29 +31,19 @@ export function CameraCapture({
   /** Live summary of what has been captured so far, e.g. "ホール2枚 · ボード4枚". */
   statusText?: string;
   canFinish?: boolean;
-  /** Stop polling while an overlay (recognising / confirm sheet) is up. */
+  /** True while an overlay (recognising / confirm sheet) is up. */
   paused?: boolean;
-  /** `count` is how many cards the scanner locked onto for this shot. */
-  onCapture: (blob: Blob, count?: number) => void;
+  onCapture: (blob: Blob) => void;
   onCancel: () => void;
   onFinish?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const overlayRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectBusy = useRef(false);
-  const historyRef = useRef<DetectFrame[]>([]);
-  const armedRef = useRef(true);
-  const capturedCountRef = useRef(0);
-  const lastLockRef = useRef<number>(0);
   const onCaptureRef = useRef(onCapture);
   onCaptureRef.current = onCapture;
 
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [quads, setQuads] = useState<DetectedQuad[]>([]);
-  const [scanState, setScanState] = useState<ScanState>({ kind: "idle" });
-  const [showManual, setShowManual] = useState(false);
   const [flash, setFlash] = useState(false);
 
   // ── Camera lifecycle ──────────────────────────────────────────────────────
@@ -94,7 +59,11 @@ export function CameraCapture({
           // Ask for the highest the device will give us: with 5 board cards in
           // frame, each card only gets a fraction of the sensor width, and the
           // rank glyph needs enough pixels to survive binarisation.
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 2160 } },
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 3840 },
+            height: { ideal: 2160 },
+          },
           audio: false,
         });
         if (cancelled) {
@@ -120,185 +89,33 @@ export function CameraCapture({
     };
   }, []);
 
-  // Grab the current video frame into a canvas, optionally downscaled.
-  const grabFrame = useCallback((maxEdge?: number): HTMLCanvasElement | null => {
+  const capture = useCallback(async () => {
     const video = videoRef.current;
-    if (!video || !video.videoWidth) return null;
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    const scale = maxEdge ? Math.min(1, maxEdge / Math.max(vw, vh)) : 1;
+    if (!video || !video.videoWidth) return;
+
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(vw * scale);
-    canvas.height = Math.round(vh * scale);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas;
-  }, []);
-
-  const captureFullFrame = useCallback(
-    async (count?: number) => {
-      const canvas = grabFrame(); // full resolution
-      if (!canvas) return;
-      const blob = await new Promise<Blob | null>((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.92));
-      if (blob) onCaptureRef.current(blob, count);
-    },
-    [grabFrame],
-  );
-
-  // ── Detection polling + auto-fire ─────────────────────────────────────────
-  useEffect(() => {
-    if (!cameraReady || paused) return;
-    let stop = false;
-
-    async function tick() {
-      if (stop) return;
-      if (!detectBusy.current) {
-        detectBusy.current = true;
-        try {
-          const canvas = grabFrame(DETECT_FRAME_MAX);
-          if (canvas) {
-            const blob = await new Promise<Blob | null>((res) =>
-              canvas.toBlob((b) => res(b), "image/jpeg", 0.6),
-            );
-            if (blob) {
-              const form = new FormData();
-              form.append("image", blob, "frame.jpg");
-              const res = await fetch("/api/detect", { method: "POST", body: form });
-              if (res.ok && !stop) {
-                const data = (await res.json()) as { boxes: DetectedQuad[] };
-                const boxes = data.boxes ?? [];
-                setQuads(boxes);
-
-                const now = performance.now();
-                historyRef.current = pruneHistory(
-                  [...historyRef.current, { t: now, quads: boxes.map((b) => b.quad) }],
-                  now,
-                  HISTORY_WINDOW_MS,
-                );
-
-                // A capture disarms the scanner so a card left in frame is not
-                // shot repeatedly; the scene has to change before it re-arms.
-                if (!armedRef.current && shouldRearm(capturedCountRef.current, boxes.length)) {
-                  armedRef.current = true;
-                }
-
-                const state = evaluateScan(historyRef.current, now, DEFAULT_SCAN_CONFIG);
-                setScanState(state);
-
-                if (state.kind === "ready" && armedRef.current) {
-                  armedRef.current = false;
-                  capturedCountRef.current = state.count;
-                  lastLockRef.current = now;
-                  setShowManual(false);
-                  setFlash(true);
-                  window.setTimeout(() => setFlash(false), 220);
-                  navigator.vibrate?.(30);
-                  await captureFullFrame(state.count);
-                } else if (state.kind === "ready" || state.kind === "settling") {
-                  lastLockRef.current = now;
-                  setShowManual(false);
-                } else if (now - lastLockRef.current > MANUAL_FALLBACK_AFTER_MS) {
-                  // Nothing has locked on for a while — offer a way out.
-                  setShowManual(true);
-                }
-              }
-            }
-          }
-        } catch {
-          /* detection is best-effort; ignore transient errors */
-        } finally {
-          detectBusy.current = false;
-        }
-      }
-      if (!stop) window.setTimeout(tick, DETECT_INTERVAL_MS);
-    }
-
-    lastLockRef.current = performance.now();
-    const t = window.setTimeout(tick, 300);
-    return () => {
-      stop = true;
-      window.clearTimeout(t);
-    };
-  }, [cameraReady, paused, grabFrame, captureFullFrame]);
-
-  // Clear stale detections while paused so the overlay does not linger.
-  useEffect(() => {
-    if (paused) {
-      setQuads([]);
-      setScanState({ kind: "idle" });
-      historyRef.current = [];
-    }
-  }, [paused]);
-
-  // ── Draw detection overlay ────────────────────────────────────────────────
-  useEffect(() => {
-    const canvas = overlayRef.current;
-    const video = videoRef.current;
-    if (!canvas || !video) return;
-
-    const rect = video.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(rect.width * dpr);
-    canvas.height = Math.round(rect.height * dpr);
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.drawImage(video, 0, 0);
 
-    // object-cover mapping: the video fills the box, cropping the longer axis.
-    const vw = video.videoWidth || 16;
-    const vh = video.videoHeight || 9;
-    const scale = Math.max(rect.width / vw, rect.height / vh);
-    const dispW = vw * scale;
-    const dispH = vh * scale;
-    const offX = (rect.width - dispW) / 2;
-    const offY = (rect.height - dispH) / 2;
-    const mapX = (nx: number) => offX + nx * dispW;
-    const mapY = (ny: number) => offY + ny * dispH;
+    setFlash(true);
+    window.setTimeout(() => setFlash(false), 220);
+    navigator.vibrate?.(30);
 
-    // Grey while the count is wrong, gold once we are counting down to a shot.
-    const locked = scanState.kind === "settling" || scanState.kind === "ready";
-    const stroke = locked ? "rgba(242,169,0,0.95)" : "rgba(255,255,255,0.55)";
-
-    for (const box of quads) {
-      const pts = box.quad.map(([nx, ny]) => [mapX(nx), mapY(ny)] as [number, number]);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = stroke;
-      ctx.shadowColor = locked ? "rgba(242,169,0,0.9)" : "transparent";
-      ctx.shadowBlur = locked ? 16 : 0;
-      ctx.beginPath();
-      pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1])));
-      ctx.closePath();
-      ctx.stroke();
-
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = "rgba(255,255,255,0.95)";
-      ctx.lineWidth = 3;
-      const cx = pts.reduce((s, p) => s + p[0], 0) / 4;
-      const cy = pts.reduce((s, p) => s + p[1], 0) / 4;
-      for (const p of pts) {
-        const dx = (cx - p[0]) * 0.22;
-        const dy = (cy - p[1]) * 0.22;
-        ctx.beginPath();
-        ctx.moveTo(p[0], p[1]);
-        ctx.lineTo(p[0] + dx, p[1]);
-        ctx.moveTo(p[0], p[1]);
-        ctx.lineTo(p[0], p[1] + dy);
-        ctx.stroke();
-      }
-    }
-  }, [quads, scanState]);
+    const blob = await new Promise<Blob | null>((res) =>
+      canvas.toBlob((b) => res(b), "image/jpeg", 0.92),
+    );
+    if (blob) onCaptureRef.current(blob);
+  }, []);
 
   const onFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onCapture(file);
   };
 
-  const progress = scanState.kind === "settling" ? scanState.progress : scanState.kind === "ready" ? 1 : 0;
-  const locked = scanState.kind === "settling" || scanState.kind === "ready";
+  const canShoot = cameraReady && !paused;
 
   return (
     <div className="fixed inset-0 z-40 bg-black text-white flex flex-col">
@@ -313,7 +130,24 @@ export function CameraCapture({
               muted
               className="absolute inset-0 h-full w-full object-cover"
             />
-            <canvas ref={overlayRef} className="absolute inset-0 h-full w-full pointer-events-none" />
+
+            {/* Framing guide. Card-shaped corner brackets, sized so 2-5 cards
+                laid in a row sit comfortably inside. */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div className="relative w-[86%] aspect-[16/10]">
+                {[
+                  "top-0 left-0 border-t-2 border-l-2 rounded-tl-2xl",
+                  "top-0 right-0 border-t-2 border-r-2 rounded-tr-2xl",
+                  "bottom-0 left-0 border-b-2 border-l-2 rounded-bl-2xl",
+                  "bottom-0 right-0 border-b-2 border-r-2 rounded-br-2xl",
+                ].map((cls) => (
+                  <span
+                    key={cls}
+                    className={`absolute h-10 w-10 border-white/70 ${cls}`}
+                  />
+                ))}
+              </div>
+            </div>
 
             {/* Capture flash */}
             <AnimatePresence>
@@ -358,65 +192,30 @@ export function CameraCapture({
               )}
             </div>
 
-            {/* Guidance + settle ring */}
-            <div className="absolute bottom-0 inset-x-0 pb-safe pb-10 flex flex-col items-center gap-4 bg-gradient-to-t from-black/65 to-transparent pt-16 pointer-events-none">
-              <div className="relative h-16 w-16">
-                <svg viewBox="0 0 64 64" className="h-16 w-16 -rotate-90">
-                  <defs>
-                    <linearGradient id="irisRing" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#F2A900" />
-                      <stop offset="40%" stopColor="#FF6B9D" />
-                      <stop offset="75%" stopColor="#7C6FFF" />
-                      <stop offset="100%" stopColor="#4ED0C1" />
-                    </linearGradient>
-                  </defs>
-                  <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="4" />
-                  <circle
-                    cx="32"
-                    cy="32"
-                    r="28"
-                    fill="none"
-                    stroke="url(#irisRing)"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                    strokeDasharray={2 * Math.PI * 28}
-                    strokeDashoffset={2 * Math.PI * 28 * (1 - progress)}
-                    style={{ transition: "stroke-dashoffset 180ms linear" }}
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <CameraIcon size={24} className={locked ? "text-gold" : "text-white/60"} />
-                </div>
+            {/* Shutter */}
+            <div className="absolute bottom-0 inset-x-0 pb-safe pb-8 flex flex-col items-center gap-5 bg-gradient-to-t from-black/70 to-transparent pt-16">
+              <div className="text-sm font-medium px-4 py-2 rounded-full glass-dark text-white/90">
+                {cameraReady ? "カードを枠に入れて撮影" : "カメラ起動中…"}
               </div>
 
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={guidance(scanState, cameraReady)}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  className={`text-sm font-medium px-4 py-2 rounded-full backdrop-blur ${
-                    locked ? "bg-gold/90 text-black" : "glass-dark text-white/90"
-                  }`}
-                >
-                  {guidance(scanState, cameraReady)}
-                </motion.div>
-              </AnimatePresence>
+              <button
+                onClick={capture}
+                disabled={!canShoot}
+                aria-label="撮影"
+                className="h-[76px] w-[76px] rounded-full bg-white/95 ring-4 ring-white/35 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-40"
+              >
+                <span className="h-[60px] w-[60px] rounded-full bg-white border-2 border-black/10" />
+              </button>
 
-              {/* Escape hatch: only appears when auto-detection cannot get a lock. */}
-              <AnimatePresence>
-                {showManual && (
-                  <motion.button
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
-                    onClick={() => captureFullFrame(quads.length || undefined)}
-                    className="pointer-events-auto text-xs font-medium text-white/80 underline underline-offset-4 px-4 py-2"
-                  >
-                    うまく読めないときは手動で撮影
-                  </motion.button>
-                )}
-              </AnimatePresence>
+              <label className="text-xs font-medium text-white/70 underline underline-offset-4 px-4 py-1 cursor-pointer">
+                写真を選ぶ
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={onFilePick}
+                  className="hidden"
+                />
+              </label>
             </div>
           </>
         ) : (
@@ -424,7 +223,13 @@ export function CameraCapture({
             <div className="text-white/80 text-sm max-w-xs">{cameraError}</div>
             <label className="rounded-full bg-gold text-black font-semibold px-6 py-3 cursor-pointer">
               写真を選択
-              <input type="file" accept="image/*" capture="environment" onChange={onFilePick} className="hidden" />
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={onFilePick}
+                className="hidden"
+              />
             </label>
             <button onClick={onCancel} className="text-white/60 text-sm">
               キャンセル

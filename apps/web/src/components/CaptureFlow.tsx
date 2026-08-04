@@ -20,7 +20,7 @@ type Phase =
   | { s: "scanning" }
   | { s: "recognizing" }
   | { s: "confirm"; result: RecognizeResult }
-  | { s: "error"; message: string; blob: Blob; count?: number };
+  | { s: "error"; message: string; blob: Blob };
 
 export type CaptureResult = { hole: ConfirmCard[]; board: ConfirmCard[] };
 
@@ -40,18 +40,18 @@ export function CaptureFlow({
   const [board, setBoard] = useState<ConfirmCard[]>(initialBoard);
   const [debugResult, setDebugResult] = useState<RecognizeResult | null>(null);
 
-  // The scanner tells us how many cards it locked onto. Passing that through
-  // keeps the splitter to exactly that many candidates, so a phone or a hand in
-  // frame cannot come back as an extra card. Debug images always come with it —
-  // they are what makes a bad read diagnosable instead of mysterious.
-  async function recognize(blob: Blob, count?: number) {
+  // No expected count is passed: the shot is whatever the user framed, and the
+  // splitter decides how many cards are in it. Debug images always come with
+  // the result — they are what makes a bad read diagnosable instead of
+  // mysterious.
+  async function recognize(blob: Blob) {
     setPhase({ s: "recognizing" });
     try {
-      const result = await recognizeCards(blob, { expectedCount: count, debug: true });
+      const result = await recognizeCards(blob, { debug: true });
       setPhase({ s: "confirm", result });
     } catch (err) {
       const message = err instanceof RecognitionError ? err.message : "認識に失敗しました。";
-      setPhase({ s: "error", message, blob, count });
+      setPhase({ s: "error", message, blob });
     }
   }
 
@@ -64,7 +64,7 @@ export function CaptureFlow({
   const statusParts: string[] = [];
   if (hole.length) statusParts.push(`ホール${hole.length}枚`);
   if (board.length) statusParts.push(`ボード${board.length}枚`);
-  const statusText = statusParts.length ? statusParts.join(" · ") : "カードをかざすと自動で記録します";
+  const statusText = statusParts.length ? statusParts.join(" · ") : "カードを枠に入れて撮影してください";
 
   return (
     <>
@@ -124,7 +124,7 @@ export function CaptureFlow({
                   撮り直す
                 </button>
                 <button
-                  onClick={() => recognize(phase.blob, phase.count)}
+                  onClick={() => recognize(phase.blob)}
                   className="flex-[2] py-3.5 rounded-2xl bg-gold text-black font-semibold shadow-gold active:scale-[0.98] transition-transform"
                 >
                   再試行
