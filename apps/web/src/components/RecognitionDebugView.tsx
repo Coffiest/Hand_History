@@ -57,7 +57,7 @@ export function RecognitionDebugView({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
     >
-      <header className="shrink-0 glass px-4 h-14 flex items-center justify-between" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
+      <header className="shrink-0 chrome-bar border-b border-hairline px-4 h-14 flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-ink">認識の詳細</h2>
           <p className="text-[11px] text-gray3">どの工程で崩れているか確認できます</p>
