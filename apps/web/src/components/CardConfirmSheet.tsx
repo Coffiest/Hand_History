@@ -19,6 +19,7 @@ export type CardRole = "hole" | "board";
 export interface ConfirmCard extends CardValue {
   rankConfidence: number | null;
   suitConfidence: number | null;
+  suitMargin: number | null;
   source: "recognized" | "manualOverride";
   accepted: boolean;
 }
@@ -29,10 +30,34 @@ function fromRecognized(c: RecognizedCard): ConfirmCard {
     suit: c.suit as SuitCode,
     rankConfidence: c.rank_confidence,
     suitConfidence: c.suit_confidence,
+    suitMargin: c.suit_margin ?? null,
     source: "recognized",
     accepted: c.accepted && c.rank !== null,
   };
 }
+
+// Mirrors the server's suit gate so the sheet can name the doubtful half.
+const SUIT_MIN_MARGIN = 0.35;
+const SUIT_MIN_CONFIDENCE = 0.55;
+
+/** Which half of a flagged card to point the user at. */
+export function reviewTarget(card: ConfirmCard): "rank" | "suit" | "both" | null {
+  if (!needsCheck(card)) return null;
+  const suitDoubtful =
+    (card.suitMargin !== null && card.suitMargin < SUIT_MIN_MARGIN) ||
+    (card.suitConfidence !== null && card.suitConfidence < SUIT_MIN_CONFIDENCE);
+  // The server only reports one combined verdict, so a card flagged despite a
+  // decisive suit must have been the rank's doing.
+  if (suitDoubtful && card.rankConfidence === null) return "both";
+  if (suitDoubtful) return "suit";
+  return "rank";
+}
+
+const REVIEW_LABEL: Record<"rank" | "suit" | "both", string> = {
+  rank: "数字を確認",
+  suit: "マークを確認",
+  both: "確認してください",
+};
 
 /** 2 cards is a hand, 3-5 is a board. The user can override on the sheet. */
 export function roleForCount(count: number): CardRole {
@@ -125,7 +150,9 @@ export function CardConfirmSheet({
               </button>
               <span className="text-sm font-semibold text-ink">{cardDisplay(card)}</span>
               {needsCheck(card) ? (
-                <span className="text-[11px] font-medium text-gold-dark">タップで修正</span>
+                <span className="text-[11px] font-medium text-gold-dark">
+                  {REVIEW_LABEL[reviewTarget(card) ?? "both"]}
+                </span>
               ) : card.source === "manualOverride" ? (
                 <span className="text-[11px] text-gray3">手動修正</span>
               ) : (

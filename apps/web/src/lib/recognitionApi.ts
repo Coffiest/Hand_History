@@ -41,6 +41,8 @@ export interface RecognizedCard {
   card_code: string;
   rank_confidence: number | null;
   suit_confidence: number;
+  /** How far the read suit leads the runner-up. Older servers omit it. */
+  suit_margin?: number;
   accepted: boolean;
   debug?: CardDebug | null;
 }

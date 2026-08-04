@@ -29,6 +29,10 @@ class CardOut(BaseModel):
     card_code: str
     rank_confidence: float | None
     suit_confidence: float
+    # How far the read suit leads the runner-up. Spades and clubs split the
+    # model's mass when it is unsure, so this separates a real read from a
+    # coin toss better than the confidence alone.
+    suit_margin: float = 1.0
     accepted: bool
     # Present only when the request asked for debug: the intermediate images
     # (card crop, rectified card, the black-and-white digit patches the

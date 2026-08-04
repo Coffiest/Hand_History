@@ -27,6 +27,8 @@ function toConfirmCards(cards: RecordedCard[]): ConfirmCard[] {
     suit: c.suit,
     rankConfidence: c.rankConfidence,
     suitConfidence: c.suitConfidence,
+    // Already-recorded cards were confirmed once; nothing left to re-check.
+    suitMargin: null,
     source: c.source,
     accepted: true,
   }));
